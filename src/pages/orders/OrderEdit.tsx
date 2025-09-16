@@ -22,8 +22,8 @@ const OrderEdit = () => {
   const [formData, setFormData] = useState({
     customerId: "",
     items: [] as OrderItem[], // aqui unitPrice será mantido em REAIS no UI
-    installmentsTotal: 1,
-    installmentsPaid: 0,
+    installmentsTotal: 1, // agora representa DIA DO MÊS (1..31)
+    installmentsPaid: 0, // aqui REPRESENTA REAIS no UI (converter pra centavos ao enviar)
   });
 
   useEffect(() => {
@@ -31,6 +31,7 @@ const OrderEdit = () => {
     if (id) {
       loadOrder(id);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const loadInitialData = async () => {
@@ -60,19 +61,20 @@ const OrderEdit = () => {
       }
 
       if (response.data) {
-        // IMPORTANTE: converter unitPrice (CENTAVOS -> REAIS) ao preencher o form
+        // converter unitPrice (CENTAVOS -> REAIS) ao preencher o form
         const itemsInReais = (response.data.items || []).map(
           (it: OrderItem) => ({
             ...it,
-            unitPrice: (it.unitPrice ?? 0) / 100, // agora unitPrice em REAIS
+            unitPrice: (it.unitPrice ?? 0) / 100, // unitPrice em REAIS para UI
           })
         );
 
         setFormData({
           customerId: response.data.customerId,
           items: itemsInReais,
-          installmentsTotal: response.data.installmentsTotal,
-          installmentsPaid: response.data.installmentsPaid,
+          installmentsTotal: response.data.installmentsTotal || 1,
+          // installmentsPaid no backend está em CENTAVOS -> converter pra REAIS pro input
+          installmentsPaid: (response.data.installmentsPaid || 0) / 100,
         });
       }
     } catch (error) {
@@ -129,7 +131,7 @@ const OrderEdit = () => {
   };
 
   const calculateTotals = () => {
-    const totalAmout = formData.items.reduce(
+    const totalAmount = formData.items.reduce(
       (sum, item) => sum + item.amount,
       0
     );
@@ -138,7 +140,7 @@ const OrderEdit = () => {
       (sum, item) => sum + item.amount * item.unitPrice,
       0
     );
-    return { totalAmout, price };
+    return { totalAmount, price };
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -170,10 +172,20 @@ const OrderEdit = () => {
 
     if (!id) return;
 
+    // valida day 1..31
+    if (formData.installmentsTotal < 1 || formData.installmentsTotal > 31) {
+      toast({
+        title: "Dia de vencimento inválido",
+        description: "Escolha um dia entre 1 e 31 para o vencimento.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setSaving(true);
 
     try {
-      const { totalAmout, price } = calculateTotals();
+      const { totalAmount, price } = calculateTotals();
 
       // converter cada unitPrice (REAIS) -> CENTAVOS antes de enviar
       const itemsInCentavos = formData.items.map((it) => ({
@@ -181,14 +193,24 @@ const OrderEdit = () => {
         unitPrice: Math.round((it.unitPrice ?? 0) * 100),
       }));
 
+      const priceCents = Math.round(price * 100);
+      const installmentsPaidCents = Math.round(
+        (formData.installmentsPaid || 0) * 100
+      );
+      const remainingCents = Math.max(0, priceCents - installmentsPaidCents);
+
       const orderData = {
         customerId: formData.customerId,
         items: itemsInCentavos,
-        totalAmout,
+        totalAmount, // CORREÇÃO: nome correto
         // price em CENTAVOS
-        price: Math.round(price * 100),
+        price: priceCents,
+        // dia do vencimento
         installmentsTotal: formData.installmentsTotal,
-        installmentsPaid: formData.installmentsPaid,
+        // valor já pago em CENTAVOS
+        installmentsPaid: installmentsPaidCents,
+        // quanto falta pagar (CENTAVOS) — backend também recalcula, mas enviamos para satisfazer tipos
+        paid: remainingCents,
       };
 
       const response = await api.updateOrder(id, orderData);
@@ -214,7 +236,7 @@ const OrderEdit = () => {
     }
   };
 
-  const { totalAmout, price } = calculateTotals();
+  const { totalAmount, price } = calculateTotals();
 
   if (loading) {
     return (
@@ -301,7 +323,7 @@ const OrderEdit = () => {
                   htmlFor="installmentsTotal"
                   className="block text-sm font-medium text-foreground mb-2"
                 >
-                  Parcelas
+                  Dia do vencimento
                 </label>
                 <select
                   id="installmentsTotal"
@@ -314,12 +336,15 @@ const OrderEdit = () => {
                   }
                   className="w-full px-4 py-3 bg-input border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-foreground"
                 >
-                  {[1, 2, 3, 4, 5, 6, 10, 12].map((num) => (
-                    <option key={num} value={num}>
-                      {num}x de {formatBRL(price / num)}
+                  {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                    <option key={d} value={d}>
+                      {d}
                     </option>
                   ))}
                 </select>
+                <p className="text-sm text-muted-foreground mt-2">
+                  A parcela vence todo dia selecionado do mês.
+                </p>
               </div>
             </div>
           </div>
@@ -446,7 +471,7 @@ const OrderEdit = () => {
             </div>
           </div>
 
-          {/* Parcelamento */}
+          {/* Parcelamento (ajustado) */}
           <div className="bg-card border border-border rounded-lg p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-foreground">
@@ -455,38 +480,30 @@ const OrderEdit = () => {
             </div>
 
             <div className="space-y-4">
-              <div className="flex-none items-center gap-2 z-10">
-                <label className="block text-sm font-medium text-foreground mb-2 w-full">
-                  Parcelas pagas
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  Valor já pago (R$)
                 </label>
-                <div className="flex items-center justify-center border border-border rounded-lg">
-                  <span className="px-4 py-2 text-center min-w-[60px]">
-                    {formData.installmentsPaid}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() =>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground mr-2">R$</span>
+                  <input
+                    type="number"
+                    value={formData.installmentsPaid}
+                    onChange={(e) =>
                       setFormData((prev) => ({
                         ...prev,
-                        installmentsPaid: Math.min(
-                          prev.installmentsPaid + 1,
-                          prev.installmentsTotal
-                        ),
+                        installmentsPaid: parseFloat(e.target.value) || 0,
                       }))
                     }
-                    className="p-2 hover:bg-accent transition-colors"
-                  >
-                    <Plus className="h-3 w-3" />
-                  </button>
+                    min="0"
+                    step="0.01"
+                    className="px-3 py-2 bg-input border border-border rounded-lg w-48"
+                  />
                 </div>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Informe quanto o cliente já pagou (ex.: 10.00 → R$50,00).
+                </p>
               </div>
-
-              {formData.items.length === 0 && (
-                <div className="text-center py-8 text-muted-foreground">
-                  Nenhum produto adicionado. Clique em "Adicionar Produto" para
-                  começar.
-                </div>
-              )}
             </div>
           </div>
 
@@ -499,7 +516,7 @@ const OrderEdit = () => {
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
                 <div>
                   <span className="text-muted-foreground">Total de itens:</span>
-                  <div className="font-semibold">{totalAmout}</div>
+                  <div className="font-semibold">{totalAmount}</div>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Total geral:</span>
@@ -509,10 +526,12 @@ const OrderEdit = () => {
                 </div>
                 <div>
                   <span className="text-muted-foreground">
-                    Valor por parcela:
+                    Valor em aberto:
                   </span>
-                  <div className="font-semibold">
-                    {formatBRL(price / formData.installmentsTotal)}
+                  <div className="font-semibold text-destructive">
+                    {formatBRL(
+                      Math.max(0, price - (formData.installmentsPaid || 0))
+                    )}
                   </div>
                 </div>
               </div>
