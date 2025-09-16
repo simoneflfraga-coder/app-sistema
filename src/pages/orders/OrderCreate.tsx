@@ -16,7 +16,13 @@ const OrderCreate = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [orderItems, setOrderItems] = useState<OrderFormItem[]>([]);
-  const [installments, setInstallments] = useState(1);
+
+  // NOTE: mantive o nome "installments" para encaixar com o campo installmentsTotal no payload.
+  // Agora este valor representa o DIA DO MÊS (1..31).
+  const [installments, setInstallments] = useState<number>(1);
+
+  // Valor já pago em REAIS no input (converteremos para centavos ao enviar)
+  const [amountPaid, setAmountPaid] = useState<number>(0);
 
   useEffect(() => {
     loadData();
@@ -66,7 +72,7 @@ const OrderCreate = () => {
         {
           productId,
           amount: 1,
-          // IMPORTANT: product.price vem em CENTAVOS do backend.
+          // product.price vem em CENTAVOS do backend.
           // Aqui guardamos unitPrice em REAIS para facilitar a edição no input.
           unitPrice: product.price / 100,
           product,
@@ -110,6 +116,11 @@ const OrderCreate = () => {
     0
   );
 
+  // centavos calculados localmente
+  const totalPriceCents = Math.round(totalPrice * 100);
+  const installmentsPaidCents = Math.round(amountPaid * 100);
+  const remainingCents = Math.max(0, totalPriceCents - installmentsPaidCents);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -131,6 +142,16 @@ const OrderCreate = () => {
       return;
     }
 
+    // valida day 1..31
+    if (installments < 1 || installments > 31) {
+      toast({
+        title: "Dia de vencimento inválido",
+        description: "Escolha um dia entre 1 e 31 para o vencimento.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -142,12 +163,17 @@ const OrderCreate = () => {
           // converter unitPrice (REAIS) -> CENTAVOS para a API
           unitPrice: Math.round(item.unitPrice * 100),
         })),
+        // manter seu comportamento atual (totalAmount = total de itens)
         totalAmount: totalQty,
         // enviar totalPrice em CENTAVOS
-        price: Math.round(totalPrice * 100),
+        price: totalPriceCents,
+        // agora: dia do mês que vence
         installmentsTotal: installments,
-        installmentsPaid: 0,
-        paid: false,
+        // agora: valor já pago em CENTAVOS
+        installmentsPaid: installmentsPaidCents,
+        paid: totalPriceCents - installmentsPaidCents,
+
+        // não enviamos `paid` — backend recalcula
       };
 
       const response = await api.createOrder(orderData);
@@ -234,7 +260,6 @@ const OrderCreate = () => {
                     <div>Código: {product.code}</div>
                     <div>Estoque: {product.stock}</div>
                     <div className="font-medium text-primary">
-                      {/* product.price está em CENTAVOS -> converter para REAIS para exibir */}
                       {formatCurrency(product.price / 100)}
                     </div>
                   </div>
@@ -352,26 +377,53 @@ const OrderCreate = () => {
             </h2>
 
             <div className="space-y-4">
+              {/* Dia do vencimento */}
               <div className="flex items-center gap-4">
                 <label
-                  htmlFor="installments"
+                  htmlFor="installmentDay"
                   className="text-sm font-medium text-foreground"
                 >
-                  Número de parcelas:
+                  Dia do vencimento:
                 </label>
                 <select
-                  id="installments"
+                  id="installmentDay"
                   value={installments}
                   onChange={(e) => setInstallments(parseInt(e.target.value))}
                   className="px-3 py-2 bg-input border border-border rounded-lg"
                 >
-                  {[1, 2, 3, 4, 5, 6, 10, 12].map((num) => (
-                    <option key={num} value={num}>
-                      {num}x{" "}
-                      {num > 1 ? `de ${formatCurrency(totalPrice / num)}` : ""}
+                  {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                    <option key={d} value={d}>
+                      {d}
                     </option>
                   ))}
                 </select>
+                <span className="text-sm text-muted-foreground ml-3">
+                  Parcela vence todo dia selecionado do mês
+                </span>
+              </div>
+
+              {/* Valor já pago */}
+              <div className="flex items-center gap-4">
+                <label
+                  htmlFor="amountPaid"
+                  className="text-sm font-medium text-foreground"
+                >
+                  Valor já pago:
+                </label>
+                <div className="flex items-center">
+                  <span className="text-sm text-muted-foreground mr-2">R$</span>
+                  <input
+                    id="amountPaid"
+                    type="number"
+                    value={amountPaid}
+                    onChange={(e) =>
+                      setAmountPaid(parseFloat(e.target.value) || 0)
+                    }
+                    min="0"
+                    step="0.01"
+                    className="px-3 py-2 bg-input border border-border rounded-lg w-36"
+                  />
+                </div>
               </div>
 
               <div className="border-t border-border pt-4 space-y-2">
@@ -385,16 +437,22 @@ const OrderCreate = () => {
                     {formatCurrency(totalPrice)}
                   </span>
                 </div>
-                {installments > 1 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">
-                      {installments}x de:
-                    </span>
-                    <span className="font-medium">
-                      {formatCurrency(totalPrice / installments)}
-                    </span>
-                  </div>
-                )}
+
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Valor já pago:</span>
+                  <span className="font-medium">
+                    {formatCurrency(installmentsPaidCents / 100)}
+                  </span>
+                </div>
+
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">
+                    Valor em aberto:
+                  </span>
+                  <span className="font-medium text-destructive">
+                    {formatCurrency(remainingCents / 100)}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
