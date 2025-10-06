@@ -10,6 +10,7 @@ const Layout = () => {
     { name: "Produtos", to: "/products", icon: Package },
     { name: "Pedidos", to: "/orders", icon: ShoppingCart },
     { name: "Registros", to: "/registrations", icon: ScrollText},
+    { name: "Importar Contatos", to: "/", icon: Users},
   ];
 
   return (
@@ -25,13 +26,13 @@ const Layout = () => {
       {/* Sidebar */}
       <div
         className={`
-        fixed top-0 left-0 z-50 h-full w-64 bg-card border-r border-border transform transition-transform lg:translate-x-0 lg:static lg:inset-0
+        fixed top-0 left-0 z-50 h-full w-64 bg-card border-r border-border transform transition-transform lg:translate-x-0 lg:inset-0
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
       `}
       >
         <div className="flex items-center justify-between p-4 border-b border-border">
           <Link to={"/"}>
-            <h1 className="text-xl font-bold text-primary">Sistema SIMONE</h1>
+            <h1 className="text-xl font-bold text-primary">Sistema {import.meta.env.VITE_SYSTEM_NAME}</h1>
           </Link>
           <button
             onClick={() => setSidebarOpen(false)}

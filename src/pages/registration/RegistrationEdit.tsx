@@ -240,8 +240,7 @@ export default function RegistrationEdit() {
                   />
                 </div>
 
-                <div className="flex items-center space-x-2">
-                  {/* Se quiser mostrar/editar o campo pago, remova comentário */}
+                {/* <div className="flex items-center space-x-2">
                   <Switch
                     id="paid"
                     checked={formData.paid}
@@ -250,7 +249,7 @@ export default function RegistrationEdit() {
                     }
                   />
                   <Label htmlFor="paid">Pago</Label>
-                </div>
+                </div> */}
               </div>
 
               <div className="space-y-2">

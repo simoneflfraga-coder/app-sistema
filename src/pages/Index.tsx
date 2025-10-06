@@ -1,9 +1,11 @@
+import Footer from "@/components/Footer";
+import InputContacts from "@/components/InputContacts";
 import {
   BarChart3,
   Package,
   ScrollText,
   ShoppingCart,
-  Users
+  Users,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -44,7 +46,7 @@ const Index = () => {
       {/* Hero Section */}
       <div className="text-center py-12">
         <h1 className="text-4xl font-bold text-foreground mb-4">
-          Sistema SIMONE
+          Sistema {import.meta.env.VITE_SYSTEM_NAME}
         </h1>
         <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
           Gerencie seus clientes, produtos e pedidos de forma simples e
@@ -185,6 +187,8 @@ const Index = () => {
           </div>
         </div>
       </div>
+      {/* <InputContacts /> */}
+      <Footer />
     </div>
   );
 };

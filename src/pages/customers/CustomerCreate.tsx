@@ -24,7 +24,7 @@ const CustomerCreate = () => {
 
   const validateCPF = (cpf: string) => {
     const cleanCPF = cpf.replace(/\D/g, '');
-    return cleanCPF.length === 11;
+    return cleanCPF.length === 11 || cleanCPF.length === 0;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -122,7 +122,7 @@ const CustomerCreate = () => {
 
             <div>
               <label htmlFor="cpf" className="block text-sm font-medium text-foreground mb-2">
-                CPF *
+                CPF
               </label>
               <input
                 type="text"
@@ -130,7 +130,7 @@ const CustomerCreate = () => {
                 name="cpf"
                 value={formatCPF(formData.cpf)}
                 onChange={(e) => setFormData(prev => ({ ...prev, cpf: e.target.value }))}
-                required
+                // required
                 className="w-full px-4 py-3 bg-input border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                 placeholder="000.000.000-00"
               />

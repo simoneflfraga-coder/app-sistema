@@ -510,7 +510,7 @@ export default function RegistrationList() {
         <Card className="shadow-lg border-primary/20">
           <CardHeader className="bg-gradient-to-r from-primary/10 to-primary/5">
             <CardTitle className="text-lg font-semibold text-primary">
-              Lista de Registros - ({filteredRegistros.length})
+              Lista de Registros - {filteredRegistros.length}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">

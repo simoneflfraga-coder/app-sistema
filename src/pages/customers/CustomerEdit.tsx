@@ -34,11 +34,13 @@ const CustomerEdit = () => {
 
       if (response.data) {
         setFormData({
-          name: response.data.name,
-          telephone: response.data.telephone,
-          address: response.data.address,
-          anniversary: response.data.anniversary.slice(0, 10),
-          cpf: response.data.cpf,
+          name: response.data.name || "",
+          telephone: response.data.telephone || "",
+          address: response.data.address || "",
+          anniversary: response.data.anniversary
+            ? response.data.anniversary.slice(0, 10)
+            : "",
+          cpf: response.data.cpf || "",
         });
       }
     } catch (error) {
@@ -55,7 +57,7 @@ const CustomerEdit = () => {
   };
 
   const handleInputChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
@@ -66,7 +68,7 @@ const CustomerEdit = () => {
 
   const validateCPF = (cpf: string) => {
     const numbers = cpf.replace(/\D/g, "");
-    return numbers.length === 11;
+    return numbers.length === 11 || numbers.length === 0;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -79,6 +81,8 @@ const CustomerEdit = () => {
       });
       return;
     }
+
+    // console.log(validateCPF(formData.cpf))
 
     if (!validateCPF(formData.cpf)) {
       toast({
@@ -93,6 +97,7 @@ const CustomerEdit = () => {
     setSaving(true);
 
     try {
+      console.log("Enviando dados:", formData);
       const response = await api.updateClient(id, formData);
 
       if (response.error) {
@@ -118,37 +123,37 @@ const CustomerEdit = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div className="flex h-64 items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary"></div>
       </div>
     );
   }
 
   return (
     <div>
-      <div className="max-w-2xl mx-auto relative flex justify-center items-center gap-4 mb-8">
+      <div className="relative mx-auto mb-8 flex max-w-2xl items-center justify-center gap-4">
         <button
           onClick={() => navigate("/clients")}
-          className="inline-flex absolute items-center left-0 gap-2 text-muted-foreground hover:text-foreground transition-colors"
+          className="absolute left-0 inline-flex items-center gap-2 text-muted-foreground transition-colors hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
           Voltar
         </button>
         <div className="">
           <h1 className="text-3xl font-bold text-foreground">Editar Cliente</h1>
-          <p className="text-muted-foreground mt-2">
+          <p className="mt-2 text-muted-foreground">
             Atualize as informações do cliente
           </p>
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto">
+      <div className="mx-auto max-w-2xl">
         <form
           onSubmit={handleSubmit}
-          className="bg-card border border-border rounded-lg p-6 space-y-6"
+          className="space-y-6 rounded-lg border border-border bg-card p-6"
         >
-          <div className="flex items-center gap-3 pb-4 border-b border-border">
-            <div className="p-2 bg-primary/10 rounded-lg">
+          <div className="flex items-center gap-3 border-b border-border pb-4">
+            <div className="rounded-lg bg-primary/10 p-2">
               <User className="h-5 w-5 text-primary" />
             </div>
             <div>
@@ -161,11 +166,11 @@ const CustomerEdit = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <div className="md:col-span-2">
               <label
                 htmlFor="name"
-                className="block text-sm font-medium text-foreground mb-2"
+                className="mb-2 block text-sm font-medium text-foreground"
               >
                 Nome completo *
               </label>
@@ -176,7 +181,7 @@ const CustomerEdit = () => {
                 value={formData.name}
                 onChange={handleInputChange}
                 required
-                className="w-full px-4 py-3 bg-input border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-foreground"
+                className="w-full rounded-lg border border-border bg-input px-4 py-3 text-foreground focus:border-transparent focus:ring-2 focus:ring-primary"
                 placeholder="Digite o nome completo"
               />
             </div>
@@ -184,7 +189,7 @@ const CustomerEdit = () => {
             <div>
               <label
                 htmlFor="telephone"
-                className="block text-sm font-medium text-foreground mb-2"
+                className="mb-2 block text-sm font-medium text-foreground"
               >
                 Telefone
               </label>
@@ -194,7 +199,7 @@ const CustomerEdit = () => {
                 name="telephone"
                 value={formData.telephone}
                 onChange={handleInputChange}
-                className="w-full px-4 py-3 bg-input border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-foreground"
+                className="w-full rounded-lg border border-border bg-input px-4 py-3 text-foreground focus:border-transparent focus:ring-2 focus:ring-primary"
                 placeholder="(11) 99999-9999"
               />
             </div>
@@ -202,7 +207,7 @@ const CustomerEdit = () => {
             <div>
               <label
                 htmlFor="cpf"
-                className="block text-sm font-medium text-foreground mb-2"
+                className="mb-2 block text-sm font-medium text-foreground"
               >
                 CPF *
               </label>
@@ -212,8 +217,8 @@ const CustomerEdit = () => {
                 name="cpf"
                 value={formData.cpf}
                 onChange={handleInputChange}
-                required
-                className="w-full px-4 py-3 bg-input border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-foreground"
+                // required
+                className="w-full rounded-lg border border-border bg-input px-4 py-3 text-foreground focus:border-transparent focus:ring-2 focus:ring-primary"
                 placeholder="000.000.000-00"
               />
             </div>
@@ -221,7 +226,7 @@ const CustomerEdit = () => {
             <div>
               <label
                 htmlFor="anniversary"
-                className="block text-sm font-medium text-foreground mb-2"
+                className="mb-2 block text-sm font-medium text-foreground"
               >
                 Data de Aniversário
               </label>
@@ -231,14 +236,14 @@ const CustomerEdit = () => {
                 name="anniversary"
                 value={formData.anniversary}
                 onChange={handleInputChange}
-                className="w-full px-4 py-3 bg-input border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-foreground"
+                className="w-full rounded-lg border border-border bg-input px-4 py-3 text-foreground focus:border-transparent focus:ring-2 focus:ring-primary"
               />
             </div>
 
             <div className="md:col-span-2">
               <label
                 htmlFor="address"
-                className="block text-sm font-medium text-foreground mb-2"
+                className="mb-2 block text-sm font-medium text-foreground"
               >
                 Endereço
               </label>
@@ -248,7 +253,7 @@ const CustomerEdit = () => {
                 value={formData.address}
                 onChange={handleInputChange}
                 rows={3}
-                className="w-full px-4 py-3 bg-input border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-foreground resize-none"
+                className="w-full resize-none rounded-lg border border-border bg-input px-4 py-3 text-foreground focus:border-transparent focus:ring-2 focus:ring-primary"
                 placeholder="Digite o endereço completo"
               />
             </div>
@@ -258,7 +263,7 @@ const CustomerEdit = () => {
             <button
               type="submit"
               disabled={saving}
-              className="flex-1 inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground px-6 py-3 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-6 py-3 text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Save className="h-4 w-4" />
               {saving ? "Salvando..." : "Salvar Alterações"}
@@ -266,7 +271,7 @@ const CustomerEdit = () => {
             <button
               type="button"
               onClick={() => navigate("/clients")}
-              className="px-6 py-3 border border-border rounded-lg text-foreground hover:bg-accent transition-colors"
+              className="rounded-lg border border-border px-6 py-3 text-foreground transition-colors hover:bg-accent"
             >
               Cancelar
             </button>

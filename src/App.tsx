@@ -1,6 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 
+import Login from "@/pages/Login";
+
 import Index from "@/pages/Index";
 import NotFound from "@/pages/NotFound";
 
@@ -24,6 +26,7 @@ import ProductList from "@/pages/products/ProductList";
 import RegistrationCreate from "@/pages/registration/RegistrationCreate";
 import RegistrationEdit from "@/pages/registration/RegistrationEdit";
 import RegistrationList from "@/pages/registration/RegistrationList";
+import Bill from "./pages/Bill";
 
 const queryClient = new QueryClient();
 
@@ -34,6 +37,9 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
+          <Route>
+            <Route path="/login" element={<Login />} />
+          </Route>
           <Route path="/" element={<Layout />}>
             <Route index element={<Index />} />
 
@@ -56,6 +62,9 @@ const App = () => (
               element={<RegistrationEdit />}
             />
           </Route>
+
+          {/* Client */}
+          <Route path="nota/:id" element={<Bill />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

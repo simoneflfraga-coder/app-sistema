@@ -17,11 +17,13 @@ const OrderCreate = () => {
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [orderItems, setOrderItems] = useState<OrderFormItem[]>([]);
 
-  // NOTE: mantive o nome "installments" para encaixar com o campo installmentsTotal no payload.
-  // Agora este valor representa o DIA DO MÊS (1..31).
+  // Dia de vencimento (1–31)
   const [installments, setInstallments] = useState<number>(1);
 
-  // Valor já pago em REAIS no input (converteremos para centavos ao enviar)
+  // Quantidade total de parcelas
+  const [quantidadeParcela, setQuantidadeParcela] = useState<number>(1);
+
+  // Valor já pago em REAIS
   const [amountPaid, setAmountPaid] = useState<number>(0);
 
   useEffect(() => {
@@ -55,7 +57,7 @@ const OrderCreate = () => {
     if (!product) return;
 
     const existingItem = orderItems.find(
-      (item) => item.productId === productId
+      (item) => item.productId === productId,
     );
 
     if (existingItem) {
@@ -63,8 +65,8 @@ const OrderCreate = () => {
         items.map((item) =>
           item.productId === productId
             ? { ...item, amount: Math.min(item.amount + 1, product.stock) }
-            : item
-        )
+            : item,
+        ),
       );
     } else {
       setOrderItems((items) => [
@@ -72,9 +74,7 @@ const OrderCreate = () => {
         {
           productId,
           amount: 1,
-          // product.price vem em CENTAVOS do backend.
-          // Aqui guardamos unitPrice em REAIS para facilitar a edição no input.
-          unitPrice: product.price / 100,
+          unitPrice: product.price / 100, // em REAIS
           product,
         },
       ]);
@@ -89,14 +89,14 @@ const OrderCreate = () => {
 
     setOrderItems((items) =>
       items.map((item) =>
-        item.productId === productId ? { ...item, amount: validQty } : item
-      )
+        item.productId === productId ? { ...item, amount: validQty } : item,
+      ),
     );
   };
 
   const removeItem = (productId: string) => {
     setOrderItems((items) =>
-      items.filter((item) => item.productId !== productId)
+      items.filter((item) => item.productId !== productId),
     );
   };
 
@@ -104,16 +104,16 @@ const OrderCreate = () => {
     setOrderItems((items) =>
       items.map((item) =>
         item.productId === productId
-          ? { ...item, unitPrice: Math.max(0.0, newPrice) } // unitPrice em REAIS
-          : item
-      )
+          ? { ...item, unitPrice: Math.max(0.0, newPrice) }
+          : item,
+      ),
     );
   };
 
   const totalQty = orderItems.reduce((sum, item) => sum + item.amount, 0);
   const totalPrice = orderItems.reduce(
-    (sum, item) => sum + item.amount * item.unitPrice, // unitPrice em REAIS -> totalPrice em REAIS
-    0
+    (sum, item) => sum + item.amount * item.unitPrice,
+    0,
   );
 
   // centavos calculados localmente
@@ -142,7 +142,7 @@ const OrderCreate = () => {
       return;
     }
 
-    // valida day 1..31
+    // valida dia 1..31
     if (installments < 1 || installments > 31) {
       toast({
         title: "Dia de vencimento inválido",
@@ -160,27 +160,27 @@ const OrderCreate = () => {
         items: orderItems.map((item) => ({
           productId: item.productId,
           amount: item.amount,
-          // converter unitPrice (REAIS) -> CENTAVOS para a API
           unitPrice: Math.round(item.unitPrice * 100),
         })),
-        // manter seu comportamento atual (totalAmount = total de itens)
         totalAmount: totalQty,
-        // enviar totalPrice em CENTAVOS
         price: totalPriceCents,
-        // agora: dia do mês que vence
-        installmentsTotal: installments,
-        // agora: valor já pago em CENTAVOS
-        installmentsPaid: installmentsPaidCents,
-        paid: totalPriceCents - installmentsPaidCents,
 
-        // não enviamos `paid` — backend recalcula
+        // dia do mês que vence (1–31)
+        installmentsTotal: installments,
+
+        // quantidade de parcelas (1–12)
+        quantidadeParcela: quantidadeParcela,
+
+        // valor já pago (em centavos)
+        installmentsPaid: installmentsPaidCents,
+
+        // valor em aberto (calculado localmente)
+        paid: totalPriceCents - installmentsPaidCents,
       };
 
       const response = await api.createOrder(orderData);
 
-      if (response.error) {
-        throw new Error(response.error);
-      }
+      if (response.error) throw new Error(response.error);
 
       toast({
         title: "Pedido criado com sucesso!",
@@ -200,7 +200,6 @@ const OrderCreate = () => {
     }
   };
 
-  // formatCurrency espera VALOR EM REAIS (já dividido)
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("pt-BR", {
       style: "currency",
@@ -209,27 +208,27 @@ const OrderCreate = () => {
   };
 
   const availableProducts = products.filter(
-    (p) => p.stock > 0 && !orderItems.some((item) => item.productId === p._id)
+    (p) => p.stock > 0 && !orderItems.some((item) => item.productId === p._id),
   );
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="mx-auto max-w-4xl">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-foreground">Novo Pedido</h1>
-        <p className="text-muted-foreground mt-2">
+        <p className="mt-2 text-muted-foreground">
           Crie um novo pedido para um cliente
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-8">
-        {/* Cliente Selection */}
-        <div className="bg-card rounded-lg border border-border p-6">
+        {/* Cliente */}
+        <div className="rounded-lg border border-border bg-card p-6">
           <h2 className="text-xl font-semibold text-foreground">Cliente</h2>
           <select
             value={selectedCustomerId}
             onChange={(e) => setSelectedCustomerId(e.target.value)}
             required
-            className="w-full px-4 py-3 bg-input border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+            className="w-full rounded-lg border border-border bg-input px-4 py-3 focus:ring-2 focus:ring-primary"
           >
             <option value="">Selecione um cliente</option>
             {clients.map((client) => (
@@ -240,23 +239,23 @@ const OrderCreate = () => {
           </select>
         </div>
 
-        {/* Product Selection */}
-        <div className="bg-card rounded-lg border border-border p-6">
-          <h2 className="text-xl font-semibold text-foreground mb-4">
+        {/* Produtos */}
+        <div className="rounded-lg border border-border bg-card p-6">
+          <h2 className="mb-4 text-xl font-semibold text-foreground">
             Adicionar Produtos
           </h2>
 
           {availableProducts.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+            <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               {availableProducts.map((product) => (
                 <div
                   key={product._id}
-                  className="border border-border rounded-lg p-4"
+                  className="rounded-lg border border-border p-4"
                 >
-                  <h3 className="font-medium text-foreground mb-2">
+                  <h3 className="mb-2 font-medium text-foreground">
                     {product.name}
                   </h3>
-                  <div className="text-sm text-muted-foreground mb-2">
+                  <div className="mb-2 text-sm text-muted-foreground">
                     <div>Código: {product.code}</div>
                     <div>Estoque: {product.stock}</div>
                     <div className="font-medium text-primary">
@@ -266,16 +265,16 @@ const OrderCreate = () => {
                   <button
                     type="button"
                     onClick={() => addProduct(product._id)}
-                    className="w-full bg-primary text-primary-foreground py-2 px-4 rounded-lg hover:opacity-90 transition-opacity"
+                    className="w-full rounded-lg bg-primary px-4 py-2 text-primary-foreground hover:opacity-90"
                   >
-                    <Plus className="h-4 w-4 inline mr-2" />
+                    <Plus className="mr-2 inline h-4 w-4" />
                     Adicionar
                   </button>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="text-center py-8 text-muted-foreground">
+            <div className="py-8 text-center text-muted-foreground">
               {orderItems.length > 0
                 ? "Todos os produtos disponíveis foram adicionados"
                 : "Nenhum produto disponível no estoque"}
@@ -283,10 +282,10 @@ const OrderCreate = () => {
           )}
         </div>
 
-        {/* Order Items */}
+        {/* Itens do Pedido */}
         {orderItems.length > 0 && (
-          <div className="bg-card rounded-lg border border-border p-6">
-            <h2 className="text-xl font-semibold text-foreground mb-4">
+          <div className="rounded-lg border border-border bg-card p-6">
+            <h2 className="mb-4 text-xl font-semibold text-foreground">
               Itens do Pedido
             </h2>
 
@@ -294,9 +293,9 @@ const OrderCreate = () => {
               {orderItems.map((item) => (
                 <div
                   key={item.productId}
-                  className="border border-border rounded-lg p-4"
+                  className="rounded-lg border border-border p-4"
                 >
-                  <div className="flex flex-col lg:flex-row lg:items-center gap-4">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
                     <div className="flex-1">
                       <h3 className="font-medium text-foreground">
                         {item.product?.name}
@@ -313,11 +312,11 @@ const OrderCreate = () => {
                         onClick={() =>
                           updateQuantity(item.productId, item.amount - 1)
                         }
-                        className="p-2 rounded-lg border border-border hover:bg-accent"
+                        className="rounded-lg border border-border p-2 hover:bg-accent"
                       >
                         <Minus className="h-4 w-4" />
                       </button>
-                      <span className="px-4 py-2 bg-input rounded-lg min-w-16 text-center">
+                      <span className="min-w-16 rounded-lg bg-input px-4 py-2 text-center">
                         {item.amount}
                       </span>
                       <button
@@ -325,7 +324,7 @@ const OrderCreate = () => {
                         onClick={() =>
                           updateQuantity(item.productId, item.amount + 1)
                         }
-                        className="p-2 rounded-lg border border-border hover:bg-accent"
+                        className="rounded-lg border border-border p-2 hover:bg-accent"
                       >
                         <Plus className="h-4 w-4" />
                       </button>
@@ -333,19 +332,18 @@ const OrderCreate = () => {
 
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-muted-foreground">R$</span>
-                      {/* unitPrice está em REAIS para edição */}
                       <input
                         type="number"
                         value={item.unitPrice}
                         onChange={(e) =>
                           updatePrice(
                             item.productId,
-                            parseFloat(e.target.value) || 0
+                            parseFloat(e.target.value) || 0,
                           )
                         }
                         min="0.00"
                         step="0.01"
-                        className="w-24 px-3 py-2 bg-input border border-border rounded-lg text-center"
+                        className="w-24 rounded-lg border border-border bg-input px-3 py-2 text-center"
                       />
                     </div>
 
@@ -358,7 +356,7 @@ const OrderCreate = () => {
                     <button
                       type="button"
                       onClick={() => removeItem(item.productId)}
-                      className="p-2 rounded-lg text-destructive hover:bg-destructive/10"
+                      className="rounded-lg p-2 text-destructive hover:bg-destructive/10"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -369,15 +367,15 @@ const OrderCreate = () => {
           </div>
         )}
 
-        {/* Summary */}
+        {/* Resumo */}
         {orderItems.length > 0 && (
-          <div className="bg-card rounded-lg border border-border p-6">
-            <h2 className="text-xl font-semibold text-foreground mb-4">
+          <div className="rounded-lg border border-border bg-card p-6">
+            <h2 className="mb-4 text-xl font-semibold text-foreground">
               Resumo do Pedido
             </h2>
 
             <div className="space-y-4">
-              {/* Dia do vencimento */}
+              {/* Dia de vencimento */}
               <div className="flex items-center gap-4">
                 <label
                   htmlFor="installmentDay"
@@ -389,7 +387,7 @@ const OrderCreate = () => {
                   id="installmentDay"
                   value={installments}
                   onChange={(e) => setInstallments(parseInt(e.target.value))}
-                  className="px-3 py-2 bg-input border border-border rounded-lg"
+                  className="rounded-lg border border-border bg-input px-3 py-2"
                 >
                   {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
                     <option key={d} value={d}>
@@ -397,36 +395,37 @@ const OrderCreate = () => {
                     </option>
                   ))}
                 </select>
-                <span className="text-sm text-muted-foreground ml-3">
+                <span className="ml-3 hidden text-sm text-muted-foreground sm:block">
                   Parcela vence todo dia selecionado do mês
                 </span>
               </div>
 
-              {/* Valor já pago */}
+              {/* Quantidade de parcelas */}
               <div className="flex items-center gap-4">
                 <label
-                  htmlFor="amountPaid"
+                  htmlFor="installmentCount"
                   className="text-sm font-medium text-foreground"
                 >
-                  Valor já pago:
+                  Quantidade de parcelas:
                 </label>
-                <div className="flex items-center">
-                  <span className="text-sm text-muted-foreground mr-2">R$</span>
-                  <input
-                    id="amountPaid"
-                    type="number"
-                    value={amountPaid}
-                    onChange={(e) =>
-                      setAmountPaid(parseFloat(e.target.value) || 0)
-                    }
-                    min="0"
-                    step="0.01"
-                    className="px-3 py-2 bg-input border border-border rounded-lg w-36"
-                  />
-                </div>
+                <select
+                  id="installmentCount"
+                  value={quantidadeParcela}
+                  onChange={(e) =>
+                    setQuantidadeParcela(parseInt(e.target.value))
+                  }
+                  className="rounded-lg border border-border bg-input px-3 py-2"
+                >
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
               </div>
 
-              <div className="border-t border-border pt-4 space-y-2">
+              {/* Valor total */}
+              <div className="space-y-2 border-t border-border pt-4">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Total de itens:</span>
                   <span className="font-medium">{totalQty}</span>
@@ -437,6 +436,18 @@ const OrderCreate = () => {
                     {formatCurrency(totalPrice)}
                   </span>
                 </div>
+
+                {/* Valor por parcela */}
+                {quantidadeParcela > 1 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">
+                      Valor por parcela:
+                    </span>
+                    <span className="font-medium text-foreground">
+                      {formatCurrency(totalPrice / quantidadeParcela)}
+                    </span>
+                  </div>
+                )}
 
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Valor já pago:</span>
@@ -458,19 +469,19 @@ const OrderCreate = () => {
           </div>
         )}
 
-        {/* Actions */}
-        <div className="flex flex-col sm:flex-row gap-4">
+        {/* Ações */}
+        <div className="flex flex-col gap-4 sm:flex-row">
           <button
             type="submit"
             disabled={loading || orderItems.length === 0 || !selectedCustomerId}
-            className="flex-1 bg-primary text-primary-foreground py-3 px-6 rounded-lg font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+            className="flex-1 rounded-lg bg-primary px-6 py-3 font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
           >
             {loading ? "Criando pedido..." : "Criar Pedido"}
           </button>
           <button
             type="button"
             onClick={() => navigate("/orders")}
-            className="flex-1 bg-secondary text-secondary-foreground py-3 px-6 rounded-lg font-medium hover:bg-accent transition-colors"
+            className="flex-1 rounded-lg bg-secondary px-6 py-3 font-medium text-secondary-foreground hover:bg-accent"
           >
             Cancelar
           </button>

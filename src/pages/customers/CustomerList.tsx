@@ -1,14 +1,14 @@
-import { useToast } from '@/hooks/use-toast';
-import { api, Client } from '@/services/api';
-import { Calendar, MapPin, Phone, Plus, Search } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useToast } from "@/hooks/use-toast";
+import { api, Client } from "@/services/api";
+import { Calendar, MapPin, Phone, Plus, Search } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 const CustomerList = () => {
   const { toast } = useToast();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
     loadClients();
@@ -17,7 +17,7 @@ const CustomerList = () => {
   const loadClients = async () => {
     try {
       const response = await api.getClients();
-      
+
       if (response.error) {
         throw new Error(response.error);
       }
@@ -26,7 +26,8 @@ const CustomerList = () => {
     } catch (error) {
       toast({
         title: "Erro ao carregar clientes",
-        description: error instanceof Error ? error.message : "Erro desconhecido",
+        description:
+          error instanceof Error ? error.message : "Erro desconhecido",
         variant: "destructive",
       });
     } finally {
@@ -34,28 +35,29 @@ const CustomerList = () => {
     }
   };
 
-  const filteredClients = clients.filter(client =>
-    client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    client.telephone.includes(searchTerm) ||
-    client.cpf.includes(searchTerm)
+  const filteredClients = clients.filter(
+    (client) =>
+      client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      client.telephone.includes(searchTerm) ||
+      client.cpf.includes(searchTerm)
   );
 
   const formatCPF = (cpf: string) => {
-    const numbers = cpf.replace(/\D/g, '');
-    return numbers.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    const numbers = cpf.replace(/\D/g, "");
+    return numbers.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
   };
 
   const formatPhone = (phone: string) => {
-    const numbers = phone.replace(/\D/g, '');
+    const numbers = phone.replace(/\D/g, "");
     if (numbers.length <= 10) {
-      return numbers.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3');
+      return numbers.replace(/(\d{2})(\d{4})(\d{4})/, "($1) $2-$3");
     }
-    return numbers.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+    return numbers.replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
   };
 
   const formatDate = (date: string) => {
-    if (!date) return '';
-    return new Date(date).toLocaleDateString('pt-BR');
+    if (!date) return "";
+    return new Date(date).toLocaleDateString("pt-BR");
   };
 
   if (loading) {
@@ -71,7 +73,9 @@ const CustomerList = () => {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Clientes</h1>
-          <p className="text-muted-foreground mt-2">Gerencie seus clientes cadastrados</p>
+          <p className="text-muted-foreground mt-2">
+            Gerencie seus clientes cadastrados
+          </p>
         </div>
         <Link
           to="/clients/new"
@@ -100,7 +104,9 @@ const CustomerList = () => {
       {filteredClients.length === 0 ? (
         <div className="bg-card border border-border rounded-lg p-12 text-center">
           <div className="text-muted-foreground mb-4">
-            {searchTerm ? 'Nenhum cliente encontrado' : 'Nenhum cliente cadastrado'}
+            {searchTerm
+              ? "Nenhum cliente encontrado"
+              : "Nenhum cliente cadastrado"}
           </div>
           {!searchTerm && (
             <Link
@@ -125,7 +131,9 @@ const CustomerList = () => {
                   {client.name}
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  CPF: {formatCPF(client.cpf)}
+                  {client.cpf
+                    ? `CPF: ${formatCPF(client.cpf)}`
+                    : "CPF não informado"}
                 </p>
               </div>
 
@@ -159,7 +167,8 @@ const CustomerList = () => {
       {/* Stats */}
       <div className="mt-8 bg-accent rounded-lg p-4">
         <div className="text-sm text-accent-foreground">
-          <span className="font-medium">{filteredClients.length}</span> cliente(s) encontrado(s)
+          <span className="font-medium">{filteredClients.length}</span>{" "}
+          cliente(s) encontrado(s)
           {searchTerm && (
             <span className="ml-2">
               de <span className="font-medium">{clients.length}</span> total

@@ -11,19 +11,37 @@ import {
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
+type PaymentEntry = { _id?: string; date: string; value: number }; // value em REAIS no UI
+
 const OrderEdit = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [addingPayment, setAddingPayment] = useState(false);
+  const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(
+    null,
+  );
   const [clients, setClients] = useState<Client[]>([]);
+  const [nameCustomer, setNameCustomer] = useState<string>("");
   const [products, setProducts] = useState<Product[]>([]);
+  const [newPaymentValue, setNewPaymentValue] = useState<number | "">("");
+  const [newPaymentDate, setNewPaymentDate] = useState<string>(() => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, "0"); // mês começa do 0
+    const day = String(today.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }); // yyyy-mm-dd optional
+
   const [formData, setFormData] = useState({
     customerId: "",
-    items: [] as OrderItem[], // aqui unitPrice será mantido em REAIS no UI
-    installmentsTotal: 1, // agora representa DIA DO MÊS (1..31)
-    installmentsPaid: 0, // aqui REPRESENTA REAIS no UI (converter pra centavos ao enviar)
+    items: [] as OrderItem[],
+    installmentsTotal: 1,
+    installmentsCount: 1,
+    installmentsPaid: 0,
+    paymentHistory: [] as PaymentEntry[],
   });
 
   useEffect(() => {
@@ -54,6 +72,7 @@ const OrderEdit = () => {
 
   const loadOrder = async (orderId: string) => {
     try {
+      setLoading(true);
       const response = await api.getOrder(orderId);
 
       if (response.error) {
@@ -66,17 +85,32 @@ const OrderEdit = () => {
           (it: OrderItem) => ({
             ...it,
             unitPrice: (it.unitPrice ?? 0) / 100, // unitPrice em REAIS para UI
-          })
+          }),
+        );
+
+        // paymentHistory: converter CENTAVOS -> REAIS para UI e manter _id
+        const paymentHistoryInReais = (response.data.paymentHistory || []).map(
+          (ph: any) => ({
+            _id: ph._id,
+            date: ph.date,
+            value: (ph.value || 0) / 100,
+          }),
         );
 
         setFormData({
           customerId: response.data.customerId,
           items: itemsInReais,
           installmentsTotal: response.data.installmentsTotal || 1,
+          installmentsCount: response.data.quantidadeParcela || 1,
           // installmentsPaid no backend está em CENTAVOS -> converter pra REAIS pro input
           installmentsPaid: (response.data.installmentsPaid || 0) / 100,
+          paymentHistory: paymentHistoryInReais,
         });
       }
+
+      const responseOne = await api.getClient(response.data.customerId);
+
+      setNameCustomer(responseOne.data.name);
     } catch (error) {
       toast({
         title: "Erro ao carregar pedido",
@@ -107,7 +141,7 @@ const OrderEdit = () => {
   const updateItem = (
     index: number,
     field: keyof OrderItem,
-    value: string | number
+    value: string | number,
   ) => {
     setFormData((prev) => ({
       ...prev,
@@ -133,12 +167,12 @@ const OrderEdit = () => {
   const calculateTotals = () => {
     const totalAmount = formData.items.reduce(
       (sum, item) => sum + item.amount,
-      0
+      0,
     );
     // item.unitPrice está em REAIS na UI → price em REAIS
     const price = formData.items.reduce(
       (sum, item) => sum + item.amount * item.unitPrice,
-      0
+      0,
     );
     return { totalAmount, price };
   };
@@ -195,22 +229,28 @@ const OrderEdit = () => {
 
       const priceCents = Math.round(price * 100);
       const installmentsPaidCents = Math.round(
-        (formData.installmentsPaid || 0) * 100
+        (formData.installmentsPaid || 0) * 100,
       );
       const remainingCents = Math.max(0, priceCents - installmentsPaidCents);
+
+      // converter paymentHistory (REAIS -> CENTAVOS)
+      const paymentHistoryInCentavos = (formData.paymentHistory || []).map(
+        (ph) => ({
+          date: ph.date || new Date().toISOString(),
+          value: Math.round((ph.value || 0) * 100),
+        }),
+      );
 
       const orderData = {
         customerId: formData.customerId,
         items: itemsInCentavos,
-        totalAmount, // CORREÇÃO: nome correto
-        // price em CENTAVOS
+        totalAmount,
         price: priceCents,
-        // dia do vencimento
         installmentsTotal: formData.installmentsTotal,
-        // valor já pago em CENTAVOS
+        installmentsCount: formData.installmentsCount,
         installmentsPaid: installmentsPaidCents,
-        // quanto falta pagar (CENTAVOS) — backend também recalcula, mas enviamos para satisfazer tipos
         paid: remainingCents,
+        paymentHistory: paymentHistoryInCentavos,
       };
 
       const response = await api.updateOrder(id, orderData);
@@ -236,12 +276,107 @@ const OrderEdit = () => {
     }
   };
 
+  const handleAddPayment = async () => {
+    if (!id) return;
+    const valueNumber =
+      typeof newPaymentValue === "string" && newPaymentValue !== ""
+        ? parseFloat(newPaymentValue)
+        : (newPaymentValue as number);
+    if (!valueNumber || valueNumber <= 0) {
+      toast({ title: "Informe um valor válido (> 0)", variant: "destructive" });
+      return;
+    }
+
+    setAddingPayment(true);
+
+    // monta o objeto de pagamento para enviar (value em CENTAVOS)
+    const cents = Math.round(valueNumber * 100);
+    // usar meio-dia UTC para preservar a data escolhida entre fusos
+    const dateIso = newPaymentDate
+      ? new Date(`${newPaymentDate}T12:00:00Z`).toISOString()
+      : new Date().toISOString();
+    const paymentToSend = { date: dateIso, value: cents };
+
+    try {
+      // usar endpoint dedicado
+      if (typeof api.addPayment === "function") {
+        const res = await api.addPayment(id, paymentToSend, nameCustomer);
+        if (res.error) throw new Error(res.error);
+        // recarrega o pedido atual do servidor
+        await loadOrder(id);
+      } else {
+        // fallback: (redundante pois você já adicionou api.addPayment) - buscar pedido e anexar
+        const serverResp = await api.getOrder(id);
+        if (serverResp.error) throw new Error(serverResp.error);
+        const serverOrder = serverResp.data;
+
+        const updatedPaymentHistory = [
+          ...(serverOrder.paymentHistory || []),
+          paymentToSend,
+        ];
+
+        const orderData = {
+          customerId: serverOrder.customerId,
+          items: serverOrder.items,
+          totalAmount: serverOrder.totalAmount,
+          price: serverOrder.price,
+          installmentsTotal: serverOrder.installmentsTotal,
+          paymentHistory: updatedPaymentHistory,
+        };
+
+        const updateResp = await api.updateOrder(id, orderData);
+        if (updateResp.error) throw new Error(updateResp.error);
+
+        await loadOrder(id);
+      }
+
+      toast({ title: "Pagamento adicionado com sucesso!" });
+      // reset inputs
+      setNewPaymentValue("");
+      setNewPaymentDate("");
+    } catch (err) {
+      toast({
+        title: "Erro ao adicionar pagamento",
+        description: err instanceof Error ? err.message : "Erro desconhecido",
+        variant: "destructive",
+      });
+    } finally {
+      setAddingPayment(false);
+    }
+  };
+
+  const handleDeletePayment = async (paymentId?: string) => {
+    if (!id || !paymentId) return;
+    const confirmed = window.confirm(
+      "Remover esse pagamento do histórico? Essa ação não pode ser desfeita.",
+    );
+    if (!confirmed) return;
+
+    try {
+      setDeletingPaymentId(paymentId);
+      const res = await api.deletePayment(id, paymentId);
+      if (res.error) throw new Error(res.error);
+
+      // recarrega o pedido para garantir consistência
+      await loadOrder(id);
+      toast({ title: "Pagamento removido com sucesso!" });
+    } catch (err) {
+      toast({
+        title: "Erro ao remover pagamento",
+        description: err instanceof Error ? err.message : "Erro desconhecido",
+        variant: "destructive",
+      });
+    } finally {
+      setDeletingPaymentId(null);
+    }
+  };
+
   const { totalAmount, price } = calculateTotals();
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div className="flex h-64 items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary"></div>
       </div>
     );
   }
@@ -255,17 +390,17 @@ const OrderEdit = () => {
 
   return (
     <div>
-      <div className="flex items-center gap-4 mb-8">
+      <div className="mb-8 flex items-center gap-4">
         <button
           onClick={() => navigate("/orders")}
-          className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
+          className="inline-flex items-center gap-2 text-muted-foreground transition-colors hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
           Voltar
         </button>
         <div>
           <h1 className="text-3xl font-bold text-foreground">Editar Pedido</h1>
-          <p className="text-muted-foreground mt-2">
+          <p className="mt-2 text-muted-foreground">
             Atualize as informações do pedido
           </p>
         </div>
@@ -274,9 +409,9 @@ const OrderEdit = () => {
       <div className="max-w-4xl">
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Cliente Selection */}
-          <div className="bg-card border border-border rounded-lg p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-primary/10 rounded-lg">
+          <div className="rounded-lg border border-border bg-card p-6">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="rounded-lg bg-primary/10 p-2">
                 <ShoppingCart className="h-5 w-5 text-primary" />
               </div>
               <div>
@@ -289,11 +424,11 @@ const OrderEdit = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
               <div>
                 <label
                   htmlFor="customerId"
-                  className="block text-sm font-medium text-foreground mb-2"
+                  className="mb-2 block text-sm font-medium text-foreground"
                 >
                   Cliente *
                 </label>
@@ -307,7 +442,7 @@ const OrderEdit = () => {
                     }))
                   }
                   required
-                  className="w-full px-4 py-3 bg-input border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-foreground"
+                  className="w-full rounded-lg border border-border bg-input px-4 py-3 text-foreground focus:border-transparent focus:ring-2 focus:ring-primary"
                 >
                   <option value="">Selecione um cliente</option>
                   {clients.map((client) => (
@@ -321,7 +456,7 @@ const OrderEdit = () => {
               <div>
                 <label
                   htmlFor="installmentsTotal"
-                  className="block text-sm font-medium text-foreground mb-2"
+                  className="mb-2 block text-sm font-medium text-foreground"
                 >
                   Dia do vencimento
                 </label>
@@ -334,7 +469,7 @@ const OrderEdit = () => {
                       installmentsTotal: parseInt(e.target.value),
                     }))
                   }
-                  className="w-full px-4 py-3 bg-input border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-foreground"
+                  className="w-full rounded-lg border border-border bg-input px-4 py-3 text-foreground focus:border-transparent focus:ring-2 focus:ring-primary"
                 >
                   {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
                     <option key={d} value={d}>
@@ -342,7 +477,7 @@ const OrderEdit = () => {
                     </option>
                   ))}
                 </select>
-                <p className="text-sm text-muted-foreground mt-2">
+                <p className="mt-2 text-sm text-muted-foreground">
                   A parcela vence todo dia selecionado do mês.
                 </p>
               </div>
@@ -350,15 +485,15 @@ const OrderEdit = () => {
           </div>
 
           {/* Products */}
-          <div className="bg-card border border-border rounded-lg p-6">
-            <div className="flex items-center justify-between mb-4">
+          <div className="rounded-lg border border-border bg-card p-6">
+            <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-foreground">
                 Produtos
               </h3>
               <button
                 type="button"
                 onClick={addProduct}
-                className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg hover:opacity-90 transition-opacity"
+                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-primary-foreground transition-opacity hover:opacity-90"
               >
                 <Plus className="h-4 w-4" />
                 Adicionar Produto
@@ -369,11 +504,11 @@ const OrderEdit = () => {
               {formData.items.map((item, index) => (
                 <div
                   key={index}
-                  className="border border-border rounded-lg p-4"
+                  className="rounded-lg border border-border p-4"
                 >
-                  <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+                  <div className="grid grid-cols-1 items-end gap-4 md:grid-cols-5">
                     <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-foreground mb-2">
+                      <label className="mb-2 block text-sm font-medium text-foreground">
                         Produto
                       </label>
                       <select
@@ -381,7 +516,7 @@ const OrderEdit = () => {
                         onChange={(e) =>
                           updateItem(index, "productId", e.target.value)
                         }
-                        className="w-full px-3 py-2 bg-input border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-foreground"
+                        className="w-full rounded-lg border border-border bg-input px-3 py-2 text-foreground focus:border-transparent focus:ring-2 focus:ring-primary"
                         required
                       >
                         <option value="">Selecione um produto</option>
@@ -393,25 +528,25 @@ const OrderEdit = () => {
                       </select>
                     </div>
 
-                    <div className="flex-none items-center gap-2 z-10">
-                      <label className="block text-sm font-medium text-foreground mb-2 w-full">
+                    <div className="z-10 flex-none items-center gap-2">
+                      <label className="mb-2 block w-full text-sm font-medium text-foreground">
                         Quantidade
                       </label>
-                      <div className="flex items-center justify-center border border-border rounded-lg">
+                      <div className="flex items-center justify-center rounded-lg border border-border">
                         <button
                           type="button"
                           onClick={() =>
                             updateItem(
                               index,
                               "amount",
-                              Math.max(1, item.amount - 1)
+                              Math.max(1, item.amount - 1),
                             )
                           }
-                          className="p-2 hover:bg-accent transition-colors"
+                          className="p-2 transition-colors hover:bg-accent"
                         >
                           <Minus className="h-3 w-3" />
                         </button>
-                        <span className="px-4 py-2 text-center min-w-[60px]">
+                        <span className="min-w-[60px] px-4 py-2 text-center">
                           {item.amount}
                         </span>
                         <button
@@ -419,7 +554,7 @@ const OrderEdit = () => {
                           onClick={() =>
                             updateItem(index, "amount", item.amount + 1)
                           }
-                          className="p-2 hover:bg-accent transition-colors"
+                          className="p-2 transition-colors hover:bg-accent"
                         >
                           <Plus className="h-3 w-3" />
                         </button>
@@ -427,7 +562,7 @@ const OrderEdit = () => {
                     </div>
 
                     <div className="w-25">
-                      <label className="block text-sm font-medium text-foreground mb-2">
+                      <label className="mb-2 block text-sm font-medium text-foreground">
                         Preço unitário (R$)
                       </label>
                       <input
@@ -437,22 +572,22 @@ const OrderEdit = () => {
                           updateItem(
                             index,
                             "unitPrice",
-                            parseFloat(e.target.value) || 0
+                            parseFloat(e.target.value) || 0,
                           )
                         }
                         step="0.01"
-                        className="w-full px-3 py-2 bg-input border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-foreground"
+                        className="w-full rounded-lg border border-border bg-input px-3 py-2 text-foreground focus:border-transparent focus:ring-2 focus:ring-primary"
                       />
                     </div>
 
-                    <div className="flex items-end flex-col gap-2">
-                      <div className="text-sm text-end font-medium text-foreground">
+                    <div className="flex flex-col items-end gap-2">
+                      <div className="text-end text-sm font-medium text-foreground">
                         Subtotal: {formatBRL(item.amount * item.unitPrice)}
                       </div>
                       <button
                         type="button"
                         onClick={() => removeProduct(index)}
-                        className="inline-flex items-center gap-1 text-destructive hover:text-destructive/80 transition-colors"
+                        className="inline-flex items-center gap-1 text-destructive transition-colors hover:text-destructive/80"
                       >
                         <Trash2 className="h-4 w-4" />
                         Remover
@@ -463,7 +598,7 @@ const OrderEdit = () => {
               ))}
 
               {formData.items.length === 0 && (
-                <div className="text-center py-8 text-muted-foreground">
+                <div className="py-8 text-center text-muted-foreground">
                   Nenhum produto adicionado. Clique em "Adicionar Produto" para
                   começar.
                 </div>
@@ -472,8 +607,8 @@ const OrderEdit = () => {
           </div>
 
           {/* Parcelamento (ajustado) */}
-          <div className="bg-card border border-border rounded-lg p-6">
-            <div className="flex items-center justify-between mb-4">
+          <div className="rounded-lg border border-border bg-card p-6">
+            <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-foreground">
                 Parcelamento
               </h3>
@@ -481,27 +616,141 @@ const OrderEdit = () => {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  Valor já pago (R$)
+                <label
+                  htmlFor="installmentsCount"
+                  className="mb-2 block text-sm font-medium text-foreground"
+                >
+                  Número de parcelas
                 </label>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground mr-2">R$</span>
-                  <input
-                    type="number"
-                    value={formData.installmentsPaid}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        installmentsPaid: parseFloat(e.target.value) || 0,
-                      }))
-                    }
-                    min="0"
-                    step="0.01"
-                    className="px-3 py-2 bg-input border border-border rounded-lg w-48"
-                  />
+                <select
+                  id="installmentsCount"
+                  value={formData.installmentsCount || 1}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      installmentsCount: parseInt(e.target.value),
+                    }))
+                  }
+                  className="w-full rounded-lg border border-border bg-input px-4 py-3 text-foreground focus:border-transparent focus:ring-2 focus:ring-primary"
+                >
+                  {Array.from({ length: 36 }, (_, i) => i + 1).map((n) => (
+                    <option key={n} value={n}>
+                      {n} {n === 1 ? "parcela" : "parcelas"}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Escolha em quantas vezes o cliente vai pagar.
+                </p>
+              </div>
+
+              {/* Mostrar valor de cada parcela */}
+              <div className="rounded-md bg-accent/30 p-3 text-sm text-foreground">
+                <div>
+                  <strong>Valor por parcela:</strong>{" "}
+                  {formatBRL(
+                    formData.installmentsCount && formData.installmentsCount > 0
+                      ? price / formData.installmentsCount
+                      : price,
+                  )}
                 </div>
-                <p className="text-sm text-muted-foreground mt-2">
-                  Informe quanto o cliente já pagou (ex.: 10.00 → R$50,00).
+              </div>
+
+              {/* Histórico de pagamentos (já existente) */}
+              <div>
+                <label className="mb-2 block text-sm font-medium text-foreground">
+                  Histórico de pagamentos
+                </label>
+                <div className="space-y-2">
+                  {formData.paymentHistory &&
+                  formData.paymentHistory.length > 0 ? (
+                    formData.paymentHistory
+                      .slice()
+                      .sort(
+                        (a, b) =>
+                          new Date(b.date).getTime() -
+                          new Date(a.date).getTime(),
+                      )
+                      .map((ph, idx) => (
+                        <div
+                          key={ph._id || idx}
+                          className="group relative flex items-center justify-between rounded-lg border border-border bg-input px-4 py-2"
+                        >
+                          <div className="text-sm text-foreground">
+                            {new Date(ph.date).toLocaleDateString("pt-BR")}
+                          </div>
+                          <div className="font-medium transition-transform group-hover:-translate-x-7">
+                            {formatBRL(ph.value)}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePayment(ph._id)}
+                            title="Remover pagamento"
+                            disabled={deletingPaymentId === ph._id}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 transform opacity-0 transition-opacity group-hover:opacity-100"
+                          >
+                            <Trash2
+                              className={`h-4 w-4 ${
+                                deletingPaymentId === ph._id
+                                  ? "text-muted-foreground"
+                                  : "text-destructive"
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      ))
+                  ) : (
+                    <div className="text-sm text-muted-foreground">
+                      Nenhum pagamento registrado.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Add payment UI */}
+              <div>
+                <label className="mb-2 block text-sm font-medium text-foreground">
+                  Adicionar pagamento
+                </label>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-2">
+                    <span className="text-sm text-muted-foreground">R$</span>
+                    <input
+                      type="number"
+                      value={newPaymentValue}
+                      onChange={(e) =>
+                        setNewPaymentValue(
+                          e.target.value === ""
+                            ? ""
+                            : parseFloat(e.target.value),
+                        )
+                      }
+                      min="0"
+                      step="0.01"
+                      placeholder="0.00"
+                      className="w-28 bg-transparent outline-none"
+                    />
+                  </div>
+
+                  <input
+                    type="date"
+                    value={newPaymentDate}
+                    onChange={(e) => setNewPaymentDate(e.target.value)}
+                    className="rounded-lg border border-border bg-input px-3 py-2"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={handleAddPayment}
+                    disabled={addingPayment}
+                    className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+                  >
+                    {addingPayment ? "Adicionando..." : "Adicionar Pagamento"}
+                  </button>
+                </div>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Adicione um pagamento ao histórico. O sistema atualizará o
+                  valor pago e o saldo automaticamente.
                 </p>
               </div>
             </div>
@@ -509,18 +758,18 @@ const OrderEdit = () => {
 
           {/* Summary */}
           {formData.items.length > 0 && (
-            <div className="bg-accent rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-accent-foreground mb-4">
+            <div className="rounded-lg bg-accent p-6">
+              <h3 className="mb-4 text-lg font-semibold text-accent-foreground">
                 Resumo do Pedido
               </h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+              <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-3">
                 <div>
                   <span className="text-muted-foreground">Total de itens:</span>
                   <div className="font-semibold">{totalAmount}</div>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Total geral:</span>
-                  <div className="font-semibold text-lg">
+                  <div className="text-lg font-semibold">
                     {formatBRL(price)}
                   </div>
                 </div>
@@ -530,7 +779,7 @@ const OrderEdit = () => {
                   </span>
                   <div className="font-semibold text-destructive">
                     {formatBRL(
-                      Math.max(0, price - (formData.installmentsPaid || 0))
+                      Math.max(0, price - (formData.installmentsPaid || 0)),
                     )}
                   </div>
                 </div>
@@ -542,7 +791,7 @@ const OrderEdit = () => {
             <button
               type="submit"
               disabled={saving}
-              className="flex-1 inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground px-6 py-3 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-6 py-3 text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Save className="h-4 w-4" />
               {saving ? "Salvando..." : "Salvar Alterações"}
@@ -550,7 +799,7 @@ const OrderEdit = () => {
             <button
               type="button"
               onClick={() => navigate("/orders")}
-              className="px-6 py-3 border border-border rounded-lg text-foreground hover:bg-accent transition-colors"
+              className="rounded-lg border border-border px-6 py-3 text-foreground transition-colors hover:bg-accent"
             >
               Cancelar
             </button>

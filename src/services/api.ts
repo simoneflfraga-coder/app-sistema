@@ -11,7 +11,7 @@ class ApiService {
 
   private async request<T>(
     endpoint: string,
-    options?: RequestInit
+    options?: RequestInit,
   ): Promise<ApiResponse<T>> {
     try {
       const response = await fetch(`${this.baseURL}${endpoint}`, {
@@ -105,6 +105,22 @@ class ApiService {
     });
   }
 
+  // Novo: adicionar pagamento ao pedido (expect POST /order/:id/payment)
+  // payment: { date: string, value: number }  -> value em CENTAVOS
+  async addPayment(id: string, payment: PaymentHistory, nameCustomer: string) {
+    return this.request<Order>(`/order/${id}/payment`, {
+      method: "POST",
+      body: JSON.stringify({ ...payment, nameCustomer }),
+    });
+  }
+
+  // Deletar pagamento de um pedido
+  async deletePayment(id: string, paymentId: string) {
+    return this.request<Order>(`/order/${id}/payment/${paymentId}`, {
+      method: "DELETE",
+    });
+  }
+
   // Registro endpoints
   async getRegistrations() {
     return this.request<Registration[]>("/registration/");
@@ -157,9 +173,9 @@ export interface Client {
   _id: string;
   name: string;
   telephone: string;
-  address: string;
-  anniversary: string;
-  cpf: string;
+  address?: string;
+  anniversary?: string;
+  cpf?: string;
 }
 
 export interface Product {
@@ -179,6 +195,11 @@ export interface OrderItem {
   unitPrice: number;
 }
 
+export interface PaymentHistory {
+  date: string;
+  value: number;
+}
+
 export interface Order {
   _id: string;
   customerId: string;
@@ -187,8 +208,10 @@ export interface Order {
   price: number;
   installmentsTotal: number;
   installmentsPaid: number;
-  paid: boolean;
+  paid?: number;
   date: string;
+  quantidadeParcela?: number;
+  paymentHistory: PaymentHistory[];
 }
 
 export interface Registration {
@@ -201,7 +224,8 @@ export interface Registration {
   tags: string[];
   createAt: string;
   newBalance: number;
-  // paid: boolean;
+  previousBalance?: number;
+  paid?: boolean;
 }
 
 export interface Financial {
