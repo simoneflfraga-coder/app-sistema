@@ -6,7 +6,7 @@ import { ArrowLeft, Share2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import logo from "@/assets/logo.jpg";
+import logo from "@/assets/logoS.jpg";
 
 import { BadgeCheck, Phone } from "lucide-react";
 
