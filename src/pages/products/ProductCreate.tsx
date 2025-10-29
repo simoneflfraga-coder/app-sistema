@@ -2,11 +2,12 @@ import { useToast } from "@/hooks/use-toast";
 import { api } from "@/services/api";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 const ProductCreate = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [loading, setLoading] = useState(false);
+  // const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     stock: 0,
@@ -15,6 +16,43 @@ const ProductCreate = () => {
     price: 0,
     datePurchase: "",
     code: "",
+  });
+
+  const queryClient = useQueryClient();
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: async () => {
+      if (formData.stock <= 0) throw new Error("A quantidade deve ser maior que zero.");
+      if (formData.value <= 0 || formData.price <= 0) throw new Error("Valor e preço devem ser maiores que zero.");
+
+      const response = await api.createProduct({
+        ...formData,
+        value: Math.round(formData.value * 100),
+        price: Math.round(formData.price * 100),
+        datePurchase: formData.datePurchase
+          ? new Date(formData.datePurchase)
+          : undefined,
+      });
+
+      if (response.error) throw new Error(response.error);
+      return response.data;
+    },
+    onSuccess: () => {
+      toast({
+        title: "Produto criado com sucesso!",
+        description: "O produto foi adicionado ao estoque.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      navigate("/products");
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Erro ao criar produto",
+        description:
+          error instanceof Error ? error.message : "Erro desconhecido",
+        variant: "destructive",
+      });
+    },
   });
 
   const handleChange = (
@@ -30,56 +68,7 @@ const ProductCreate = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (formData.stock <= 0) {
-      toast({
-        title: "Quantidade inválida",
-        description: "A quantidade deve ser maior que zero.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (formData.value <= 0 || formData.price <= 0) {
-      toast({
-        title: "Valores inválidos",
-        description: "Valor e preço devem ser maiores que zero.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const response = await api.createProduct({
-        ...formData,
-        value: Math.round(formData.value * 100),
-        price: Math.round(formData.price * 100),
-        datePurchase: formData.datePurchase
-          ? new Date(formData.datePurchase)
-          : undefined,
-      });
-
-      if (response.error) {
-        throw new Error(response.error);
-      }
-
-      toast({
-        title: "Produto criado com sucesso!",
-        description: "O produto foi adicionado ao estoque.",
-      });
-
-      navigate("/products");
-    } catch (error) {
-      toast({
-        title: "Erro ao criar produto",
-        description:
-          error instanceof Error ? error.message : "Erro desconhecido",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
+    mutate();
   };
 
   const formatCurrency = (value: number) => {
@@ -287,10 +276,10 @@ const ProductCreate = () => {
           <div className="flex flex-col sm:flex-row gap-4 pt-6">
             <button
               type="submit"
-              disabled={loading}
+              disabled={isPending}
               className="flex-1 bg-primary text-primary-foreground py-3 px-6 rounded-lg font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
             >
-              {loading ? "Salvando..." : "Salvar Produto"}
+              {isPending ? "Salvando..." : "Salvar Produto"}
             </button>
             <button
               type="button"

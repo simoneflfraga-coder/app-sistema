@@ -284,6 +284,10 @@ const OrderList = () => {
     return new Date(b.date).getTime() - new Date(a.date).getTime();
   });
 
+  const firstOverdueId = sortedOrders.find(
+    (o) => computeDueInfo(o).overdue,
+  )?._id;
+
   return (
     <div>
       <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between">
@@ -387,7 +391,7 @@ const OrderList = () => {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform text-muted-foreground" />
           <input
             type="text"
-            placeholder="Buscar por cliente, telefone ou ID..."
+            placeholder="Buscar por nome, telefone, cpf..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full rounded-lg border border-border bg-input py-3 pl-10 pr-4 focus:border-transparent focus:ring-2 focus:ring-primary"
@@ -409,7 +413,7 @@ const OrderList = () => {
         </button>
       </div>
 
-      {/* Orders list */}
+      {/* Orders list */}   
       {filteredOrders.length === 0 ? (
         <div className="rounded-lg border border-border bg-card p-12 text-center">
           <div className="mb-4 text-muted-foreground">
@@ -429,104 +433,113 @@ const OrderList = () => {
         </div>
       ) : (
         <div className="flex flex-col space-y-4">
-          {sortedOrders.map((order) => (
-            <Link to={`${order._id}/edit`} key={order._id}>
-              <div className="group rounded-lg border border-border bg-card p-6 transition-shadow hover:shadow-md">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                  <div className="flex-1">
-                    <div className="mb-2 flex items-center gap-2">
-                      <User className="h-4 w-4 text-muted-foreground" />
-                      <h3 className="text-lg font-semibold text-foreground">
-                        {order.client?.name || "Cliente não encontrado"}
-                      </h3>
+          {sortedOrders.map((order) => {
+            const overdueClasses =
+              computeDueInfo(order).overdue && sortByDue
+                ? "border-destructive bg-destructive/10" // destaque para todos os atrasados (sutil)
+                : "";
+
+            return (
+              <Link to={`${order._id}/edit`} key={order._id}>
+                <div
+                  className={`${overdueClasses} group rounded-lg border border-border bg-card p-6 transition-shadow hover:shadow-md`}
+                >
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="flex-1">
+                      <div className="mb-2 flex items-center gap-2">
+                        <User className="h-4 w-4 text-muted-foreground" />
+                        <h3 className="text-lg font-semibold text-foreground">
+                          {order.client?.name || "Cliente não encontrado"}
+                        </h3>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-4 text-sm text-muted-foreground sm:grid-cols-2 lg:grid-cols-4">
+                        <div>
+                          <span className="font-medium">CPF:</span>{" "}
+                          {order.client?.cpf || "-"}
+                        </div>
+                        <div>
+                          <span className="font-medium">Data:</span>{" "}
+                          {formatDate(order.date)}
+                        </div>
+                        <div>
+                          <span className="font-medium">Itens:</span>{" "}
+                          {order.totalAmount}
+                        </div>
+                        <div>
+                          <span className="font-medium">Vencimento:</span>{" "}
+                          {order.installmentsTotal
+                            ? `dia ${order.installmentsTotal}`
+                            : "-"}
+                          <div className="mt-2">
+                            {order.paid === 0 ? (
+                              <div className="inline-flex items-center gap-2 text-sm text-green-600">
+                                <BadgeCheck className="h-5 w-5" />
+                                <span className="font-medium">Pago</span>
+                              </div>
+                            ) : (
+                              <div className="inline-flex items-center gap-2 text-sm text-destructive">
+                                <CircleX className="h-5 w-5" />
+                                <span className="font-medium">
+                                  Em aberto: {formatCurrency(order.paid || 0)}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {order.client?.telephone && (
+                        <div className="mt-2 text-sm text-muted-foreground">
+                          Telefone: {order.client.telephone}
+                        </div>
+                      )}
                     </div>
 
-                    <div className="grid grid-cols-1 gap-4 text-sm text-muted-foreground sm:grid-cols-2 lg:grid-cols-4">
-                      <div>
-                        <span className="font-medium">CPF:</span>{" "}
-                        {order.client?.cpf || "-"}
+                    <div className="text-right">
+                      <div className="mb-1 text-2xl font-bold text-primary">
+                        {formatCurrency(order.price || 0)}
                       </div>
-                      <div>
-                        <span className="font-medium">Data:</span>{" "}
-                        {formatDate(order.date)}
-                      </div>
-                      <div>
-                        <span className="font-medium">Itens:</span>{" "}
-                        {order.totalAmount}
-                      </div>
-                      <div>
-                        <span className="font-medium">Vencimento:</span>{" "}
-                        {order.installmentsTotal
-                          ? `dia ${order.installmentsTotal}`
-                          : "-"}
-                        <div className="mt-2">
-                          {order.paid === 0 ? (
-                            <div className="inline-flex items-center gap-2 text-sm text-green-600">
-                              <BadgeCheck className="h-5 w-5" />
-                              <span className="font-medium">Pago</span>
-                            </div>
-                          ) : (
-                            <div className="inline-flex items-center gap-2 text-sm text-destructive">
-                              <CircleX className="h-5 w-5" />
-                              <span className="font-medium">
-                                Em aberto: {formatCurrency(order.paid || 0)}
-                              </span>
-                            </div>
-                          )}
+                      <div className="text-sm text-muted-foreground">
+                        <div>
+                          Valor já pago:{" "}
+                          {formatCurrency(order.installmentsPaid || 0)}
                         </div>
                       </div>
                     </div>
-
-                    {order.client?.telephone && (
-                      <div className="mt-2 text-sm text-muted-foreground">
-                        Telefone: {order.client.telephone}
-                      </div>
-                    )}
                   </div>
 
-                  <div className="text-right">
-                    <div className="mb-1 text-2xl font-bold text-primary">
-                      {formatCurrency(order.price || 0)}
-                    </div>
+                  {/* Order items preview */}
+                  <div className="mt-4 flex items-center justify-between border-t border-border pt-4">
                     <div className="text-sm text-muted-foreground">
-                      <div>
-                        Valor já pago:{" "}
-                        {formatCurrency(order.installmentsPaid || 0)}
-                      </div>
+                      <span className="font-medium">Produtos:</span>{" "}
+                      {order.items.length} tipo(s) de produto
                     </div>
+                    {(() => {
+                      const encoded = hashids.encodeHex(order._id);
+
+                      return (
+                        <a
+                          href={`/nota/${encoded}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          className="relative flex w-10 items-center gap-3 overflow-hidden rounded-lg bg-primary-light p-2 transition-all duration-300 hover:w-[160px]"
+                        >
+                          <ScrollText className="h-6 w-6 text-primary" />
+                          <p className="absolute ml-10 whitespace-nowrap font-semibold text-primary">
+                            Gerar Fatura
+                          </p>
+                        </a>
+                      );
+                      // <Link to={`/${encoded}`}>Hash link</Link>;
+                    })()}
                   </div>
                 </div>
-
-                {/* Order items preview */}
-                <div className="mt-4 flex items-center justify-between border-t border-border pt-4">
-                  <div className="text-sm text-muted-foreground">
-                    <span className="font-medium">Produtos:</span>{" "}
-                    {order.items.length} tipo(s) de produto
-                  </div>
-                  {(() => {
-                    const encoded = hashids.encodeHex(order._id);
-
-                    return (
-                      <a
-                        href={`/nota/${encoded}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        onMouseDown={(e) => e.stopPropagation()}
-                        className="relative flex w-10 items-center gap-3 overflow-hidden rounded-lg bg-primary-light p-2 transition-all duration-300 hover:w-[160px]"
-                      >
-                        <ScrollText className="h-6 w-6 text-primary" />
-                        <p className="absolute ml-10 whitespace-nowrap font-semibold text-primary">
-                          Gerar Fatura
-                        </p>
-                      </a>
-                    );
-                    // <Link to={`/${encoded}`}>Hash link</Link>;
-                  })()}
-                </div>
-              </div>
-            </Link>
-          ))}
+              </Link>
+            );
+          })}
         </div>
       )}
     </div>

@@ -1,6 +1,6 @@
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/services/api";
-import { ArrowLeft, Save, User } from "lucide-react";
+import { ArrowLeft, Save, Trash2, User } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
@@ -121,6 +121,36 @@ const CustomerEdit = () => {
     }
   };
 
+  const deleteCustomer = async (id: string) => {
+    const confirmed = window.confirm(
+      "Tem certeza que deseja remover este cliente?",
+    );
+    if (!confirmed) return;
+
+    try {
+      setLoading(true);
+      const response = await api.deleteClient(id);
+      if (response.error) {
+        throw new Error(response.error);
+      }
+      toast({
+        title: "Cliente removido",
+        description: "O cliente foi removido com sucesso.",
+        variant: "default",
+      });
+    } catch (error) {
+      toast({
+        title: "Erro ao remover cliente",
+        description:
+          error instanceof Error ? error.message : "Erro desconhecido",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+      navigate("/clients");
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -140,7 +170,7 @@ const CustomerEdit = () => {
           Voltar
         </button>
         <div className="">
-          <h1 className="text-3xl font-bold text-foreground">Editar Cliente</h1>
+          <h1 className="text-3xl text-center font-bold text-foreground">Editar Cliente</h1>
           <p className="mt-2 text-muted-foreground">
             Atualize as informações do cliente
           </p>
@@ -163,6 +193,14 @@ const CustomerEdit = () => {
               <p className="text-sm text-muted-foreground">
                 Preencha os dados necessários
               </p>
+            </div>
+            <div
+              onClick={() => {
+                deleteCustomer(id);
+              }}
+              className="ml-auto mr-2 cursor-pointer rounded-[6px] p-1 text-red-600 hover:bg-red-600/20"
+            >
+              <Trash2 />
             </div>
           </div>
 
@@ -209,7 +247,7 @@ const CustomerEdit = () => {
                 htmlFor="cpf"
                 className="mb-2 block text-sm font-medium text-foreground"
               >
-                CPF *
+                CPF
               </label>
               <input
                 type="text"

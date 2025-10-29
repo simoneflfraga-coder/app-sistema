@@ -1,5 +1,4 @@
 import Footer from "@/components/Footer";
-import InputContacts from "@/components/InputContacts";
 import {
   BarChart3,
   Package,
@@ -8,6 +7,8 @@ import {
   Users,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+
+import BlueHeartHori from "@/assets/BlueHeartHorizontalShadow.svg";
 
 const Index = () => {
   const quickActions = [
@@ -44,30 +45,31 @@ const Index = () => {
   return (
     <div className="space-y-8">
       {/* Hero Section */}
-      <div className="text-center py-12">
-        <h1 className="text-4xl font-bold text-foreground mb-4">
+      <div className="pb-12 text-center flex flex-col items-center">
+        {/* <h1 className="mb-4 text-4xl font-bold text-foreground">
           Sistema {import.meta.env.VITE_SYSTEM_NAME}
-        </h1>
-        <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+        </h1> */}
+        <img src={BlueHeartHori} className="w-80 mb-10" alt="" />
+        <p className="mx-auto max-w-2xl text-xl text-muted-foreground">
           Gerencie seus clientes, produtos e pedidos de forma simples e
           eficiente
         </p>
       </div>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
         {quickActions.map((action) => (
           <Link
             key={action.title}
             to={action.to}
-            className="bg-card border border-border rounded-lg p-6 hover:shadow-lg transition-all hover:scale-105 group"
+            className="group rounded-lg border border-border bg-card p-6 transition-all hover:scale-105 hover:shadow-lg"
           >
             <div
-              className={`w-12 h-12 ${action.color} rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}
+              className={`h-12 w-12 ${action.color} mb-4 flex items-center justify-center rounded-lg transition-transform group-hover:scale-110`}
             >
               <action.icon className="h-6 w-6 text-white" />
             </div>
-            <h3 className="text-lg font-semibold text-foreground mb-2">
+            <h3 className="mb-2 text-lg font-semibold text-foreground">
               {action.title}
             </h3>
             <p className="text-muted-foreground">{action.description}</p>
@@ -76,13 +78,13 @@ const Index = () => {
       </div>
 
       {/* Navigation Cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Link
           to="/clients"
-          className="bg-card border border-border rounded-lg p-6 hover:shadow-md transition-shadow group"
+          className="group rounded-lg border border-border bg-card p-6 transition-shadow hover:shadow-md"
         >
-          <div className="flex items-center gap-4 mb-4">
-            <div className="p-3 bg-primary-light rounded-lg">
+          <div className="mb-4 flex items-center gap-4">
+            <div className="rounded-lg bg-primary-light p-3">
               <Users className="h-6 w-6 text-primary" />
             </div>
             <div>
@@ -101,10 +103,10 @@ const Index = () => {
 
         <Link
           to="/products"
-          className="bg-card border border-border rounded-lg p-6 hover:shadow-md transition-shadow group"
+          className="group rounded-lg border border-border bg-card p-6 transition-shadow hover:shadow-md"
         >
-          <div className="flex items-center gap-4 mb-4">
-            <div className="p-3 bg-primary-light rounded-lg">
+          <div className="mb-4 flex items-center gap-4">
+            <div className="rounded-lg bg-primary-light p-3">
               <Package className="h-6 w-6 text-primary" />
             </div>
             <div>
@@ -123,10 +125,10 @@ const Index = () => {
 
         <Link
           to="/orders"
-          className="bg-card border border-border rounded-lg p-6 hover:shadow-md transition-shadow group"
+          className="group rounded-lg border border-border bg-card p-6 transition-shadow hover:shadow-md"
         >
-          <div className="flex items-center gap-4 mb-4">
-            <div className="p-3 bg-primary-light rounded-lg">
+          <div className="mb-4 flex items-center gap-4">
+            <div className="rounded-lg bg-primary-light p-3">
               <ShoppingCart className="h-6 w-6 text-primary" />
             </div>
             <div>
@@ -142,13 +144,13 @@ const Index = () => {
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-1 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-1">
         <Link
           to="/registrations"
-          className="bg-card border border-border rounded-lg p-6 hover:shadow-md transition-shadow group"
+          className="group rounded-lg border border-border bg-card p-6 transition-shadow hover:shadow-md"
         >
-          <div className="flex items-center gap-4 mb-4">
-            <div className="p-3 bg-primary-light rounded-lg">
+          <div className="mb-4 flex items-center gap-4">
+            <div className="rounded-lg bg-primary-light p-3">
               <ScrollText className="h-6 w-6 text-primary" />
             </div>
             <div>
@@ -167,17 +169,17 @@ const Index = () => {
       </div>
 
       {/* Features Overview */}
-      <div className="bg-card border border-border rounded-lg p-8">
-        <h2 className="text-2xl font-semibold text-foreground mb-6 text-center">
+      <div className="rounded-lg border border-border bg-card p-8">
+        <h2 className="mb-6 text-center text-2xl font-semibold text-foreground">
           EM BREVE: Recursos do Sistema
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <div className="flex items-start gap-4">
-            <div className="p-2 bg-accent rounded-lg">
+            <div className="rounded-lg bg-accent p-2">
               <BarChart3 className="h-5 w-5 text-accent-foreground" />
             </div>
             <div>
-              <h3 className="font-medium text-foreground mb-1">
+              <h3 className="mb-1 font-medium text-foreground">
                 Dashboard Completo
               </h3>
               <p className="text-sm text-muted-foreground">

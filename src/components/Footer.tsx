@@ -81,7 +81,7 @@ const Footer = () => {
 
           <div className="mt-8 pt-8 border-t border-footer-border">
             <p className="text-footer-text text-sm">
-              © 2025 Gabriel Luis. Todos os direitos reservados.
+              © 2025 BlueHeart. Todos os direitos reservados.
             </p>
           </div>
         </div>

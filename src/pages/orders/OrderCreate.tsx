@@ -17,13 +17,11 @@ const OrderCreate = () => {
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [orderItems, setOrderItems] = useState<OrderFormItem[]>([]);
 
-  // Dia de vencimento (1–31)
+  // NOTE: mantive o nome "installments" para encaixar com o campo installmentsTotal no payload.
+  // Agora este valor representa o DIA DO MÊS (1..31).
   const [installments, setInstallments] = useState<number>(1);
 
-  // Quantidade total de parcelas
-  const [quantidadeParcela, setQuantidadeParcela] = useState<number>(1);
-
-  // Valor já pago em REAIS
+  // Valor já pago em REAIS no input (converteremos para centavos ao enviar)
   const [amountPaid, setAmountPaid] = useState<number>(0);
 
   useEffect(() => {
@@ -74,7 +72,9 @@ const OrderCreate = () => {
         {
           productId,
           amount: 1,
-          unitPrice: product.price / 100, // em REAIS
+          // product.price vem em CENTAVOS do backend.
+          // Aqui guardamos unitPrice em REAIS para facilitar a edição no input.
+          unitPrice: product.price / 100,
           product,
         },
       ]);
@@ -104,7 +104,7 @@ const OrderCreate = () => {
     setOrderItems((items) =>
       items.map((item) =>
         item.productId === productId
-          ? { ...item, unitPrice: Math.max(0.0, newPrice) }
+          ? { ...item, unitPrice: Math.max(0.0, newPrice) } // unitPrice em REAIS
           : item,
       ),
     );
@@ -112,7 +112,7 @@ const OrderCreate = () => {
 
   const totalQty = orderItems.reduce((sum, item) => sum + item.amount, 0);
   const totalPrice = orderItems.reduce(
-    (sum, item) => sum + item.amount * item.unitPrice,
+    (sum, item) => sum + item.amount * item.unitPrice, // unitPrice em REAIS -> totalPrice em REAIS
     0,
   );
 
@@ -142,7 +142,7 @@ const OrderCreate = () => {
       return;
     }
 
-    // valida dia 1..31
+    // valida day 1..31
     if (installments < 1 || installments > 31) {
       toast({
         title: "Dia de vencimento inválido",
@@ -160,27 +160,27 @@ const OrderCreate = () => {
         items: orderItems.map((item) => ({
           productId: item.productId,
           amount: item.amount,
+          // converter unitPrice (REAIS) -> CENTAVOS para a API
           unitPrice: Math.round(item.unitPrice * 100),
         })),
+        // manter seu comportamento atual (totalAmount = total de itens)
         totalAmount: totalQty,
+        // enviar totalPrice em CENTAVOS
         price: totalPriceCents,
-
-        // dia do mês que vence (1–31)
+        // agora: dia do mês que vence
         installmentsTotal: installments,
-
-        // quantidade de parcelas (1–12)
-        quantidadeParcela: quantidadeParcela,
-
-        // valor já pago (em centavos)
+        // agora: valor já pago em CENTAVOS
         installmentsPaid: installmentsPaidCents,
-
-        // valor em aberto (calculado localmente)
         paid: totalPriceCents - installmentsPaidCents,
+
+        // não enviamos `paid` — backend recalcula
       };
 
       const response = await api.createOrder(orderData);
 
-      if (response.error) throw new Error(response.error);
+      if (response.error) {
+        throw new Error(response.error);
+      }
 
       toast({
         title: "Pedido criado com sucesso!",
@@ -200,6 +200,7 @@ const OrderCreate = () => {
     }
   };
 
+  // formatCurrency espera VALOR EM REAIS (já dividido)
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("pt-BR", {
       style: "currency",
@@ -221,14 +222,14 @@ const OrderCreate = () => {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-8">
-        {/* Cliente */}
+        {/* Cliente Selection */}
         <div className="rounded-lg border border-border bg-card p-6">
           <h2 className="text-xl font-semibold text-foreground">Cliente</h2>
           <select
             value={selectedCustomerId}
             onChange={(e) => setSelectedCustomerId(e.target.value)}
             required
-            className="w-full rounded-lg border border-border bg-input px-4 py-3 focus:ring-2 focus:ring-primary"
+            className="w-full rounded-lg border border-border bg-input px-4 py-3 focus:border-transparent focus:ring-2 focus:ring-primary"
           >
             <option value="">Selecione um cliente</option>
             {clients.map((client) => (
@@ -239,7 +240,7 @@ const OrderCreate = () => {
           </select>
         </div>
 
-        {/* Produtos */}
+        {/* Product Selection */}
         <div className="rounded-lg border border-border bg-card p-6">
           <h2 className="mb-4 text-xl font-semibold text-foreground">
             Adicionar Produtos
@@ -265,7 +266,7 @@ const OrderCreate = () => {
                   <button
                     type="button"
                     onClick={() => addProduct(product._id)}
-                    className="w-full rounded-lg bg-primary px-4 py-2 text-primary-foreground hover:opacity-90"
+                    className="w-full rounded-lg bg-primary px-4 py-2 text-primary-foreground transition-opacity hover:opacity-90"
                   >
                     <Plus className="mr-2 inline h-4 w-4" />
                     Adicionar
@@ -282,7 +283,7 @@ const OrderCreate = () => {
           )}
         </div>
 
-        {/* Itens do Pedido */}
+        {/* Order Items */}
         {orderItems.length > 0 && (
           <div className="rounded-lg border border-border bg-card p-6">
             <h2 className="mb-4 text-xl font-semibold text-foreground">
@@ -332,6 +333,7 @@ const OrderCreate = () => {
 
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-muted-foreground">R$</span>
+                      {/* unitPrice está em REAIS para edição */}
                       <input
                         type="number"
                         value={item.unitPrice}
@@ -367,7 +369,7 @@ const OrderCreate = () => {
           </div>
         )}
 
-        {/* Resumo */}
+        {/* Summary */}
         {orderItems.length > 0 && (
           <div className="rounded-lg border border-border bg-card p-6">
             <h2 className="mb-4 text-xl font-semibold text-foreground">
@@ -375,7 +377,7 @@ const OrderCreate = () => {
             </h2>
 
             <div className="space-y-4">
-              {/* Dia de vencimento */}
+              {/* Dia do vencimento */}
               <div className="flex items-center gap-4">
                 <label
                   htmlFor="installmentDay"
@@ -400,31 +402,30 @@ const OrderCreate = () => {
                 </span>
               </div>
 
-              {/* Quantidade de parcelas */}
-              <div className="flex items-center gap-4">
+              {/* Valor já pago */}
+              {/* <div className="flex items-center gap-4">
                 <label
-                  htmlFor="installmentCount"
+                  htmlFor="amountPaid"
                   className="text-sm font-medium text-foreground"
                 >
-                  Quantidade de parcelas:
+                  Valor já pago:
                 </label>
-                <select
-                  id="installmentCount"
-                  value={quantidadeParcela}
-                  onChange={(e) =>
-                    setQuantidadeParcela(parseInt(e.target.value))
-                  }
-                  className="rounded-lg border border-border bg-input px-3 py-2"
-                >
-                  {Array.from({ length: 12 }, (_, i) => i + 1).map((d) => (
-                    <option key={d} value={d}>
-                      {d}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                <div className="flex items-center">
+                  <span className="text-sm text-muted-foreground mr-2">R$</span>
+                  <input
+                    id="amountPaid"
+                    type="number"
+                    value={amountPaid}
+                    onChange={(e) =>
+                      setAmountPaid(parseFloat(e.target.value) || 0)
+                    }
+                    min="0"
+                    step="0.01"
+                    className="px-3 py-2 bg-input border border-border rounded-lg w-36"
+                  />
+                </div>
+              </div> */}
 
-              {/* Valor total */}
               <div className="space-y-2 border-t border-border pt-4">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Total de itens:</span>
@@ -436,18 +437,6 @@ const OrderCreate = () => {
                     {formatCurrency(totalPrice)}
                   </span>
                 </div>
-
-                {/* Valor por parcela */}
-                {quantidadeParcela > 1 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">
-                      Valor por parcela:
-                    </span>
-                    <span className="font-medium text-foreground">
-                      {formatCurrency(totalPrice / quantidadeParcela)}
-                    </span>
-                  </div>
-                )}
 
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Valor já pago:</span>
@@ -469,19 +458,19 @@ const OrderCreate = () => {
           </div>
         )}
 
-        {/* Ações */}
+        {/* Actions */}
         <div className="flex flex-col gap-4 sm:flex-row">
           <button
             type="submit"
             disabled={loading || orderItems.length === 0 || !selectedCustomerId}
-            className="flex-1 rounded-lg bg-primary px-6 py-3 font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+            className="flex-1 rounded-lg bg-primary px-6 py-3 font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
           >
             {loading ? "Criando pedido..." : "Criar Pedido"}
           </button>
           <button
             type="button"
             onClick={() => navigate("/orders")}
-            className="flex-1 rounded-lg bg-secondary px-6 py-3 font-medium text-secondary-foreground hover:bg-accent"
+            className="flex-1 rounded-lg bg-secondary px-6 py-3 font-medium text-secondary-foreground transition-colors hover:bg-accent"
           >
             Cancelar
           </button>

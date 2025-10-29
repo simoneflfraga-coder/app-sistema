@@ -14,6 +14,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import CustomerCreate from "@/pages/customers/CustomerCreate";
 import CustomerEdit from "@/pages/customers/CustomerEdit";
 import CustomerList from "@/pages/customers/CustomerList";
+import ContactImport from "./pages/customers/ContactImport";
 
 import OrderCreate from "@/pages/orders/OrderCreate";
 import OrdersEdit from "@/pages/orders/OrderEdit";
@@ -39,13 +40,19 @@ const App = () => (
         <Routes>
           <Route>
             <Route path="/login" element={<Login />} />
+            {/* Client */}
+            <Route path="nota/:id" element={<Bill />} />
           </Route>
+          {/* <Route path="/home" element={<Layout />}>
+            <Route index element={<Index />}/>
+          </Route> */}
           <Route path="/" element={<Layout />}>
-            <Route index element={<Index />} />
+            <Route index element={<Index />} />;
 
             <Route path="clients" element={<CustomerList />} />
             <Route path="clients/new" element={<CustomerCreate />} />
             <Route path="clients/:id/edit" element={<CustomerEdit />} />
+            <Route path="clients/import" element={<ContactImport />} />
 
             <Route path="products" element={<ProductList />} />
             <Route path="products/new" element={<ProductCreate />} />
@@ -63,8 +70,6 @@ const App = () => (
             />
           </Route>
 
-          {/* Client */}
-          <Route path="nota/:id" element={<Bill />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

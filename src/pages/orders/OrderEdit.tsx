@@ -37,11 +37,10 @@ const OrderEdit = () => {
 
   const [formData, setFormData] = useState({
     customerId: "",
-    items: [] as OrderItem[],
-    installmentsTotal: 1,
-    installmentsCount: 1,
-    installmentsPaid: 0,
-    paymentHistory: [] as PaymentEntry[],
+    items: [] as OrderItem[], // unitPrice em REAIS no UI
+    installmentsTotal: 1, // dia do mês (1..31)
+    installmentsPaid: 0, // REAIS no UI
+    paymentHistory: [] as PaymentEntry[], // REAIS no UI
   });
 
   useEffect(() => {
@@ -101,7 +100,6 @@ const OrderEdit = () => {
           customerId: response.data.customerId,
           items: itemsInReais,
           installmentsTotal: response.data.installmentsTotal || 1,
-          installmentsCount: response.data.quantidadeParcela || 1,
           // installmentsPaid no backend está em CENTAVOS -> converter pra REAIS pro input
           installmentsPaid: (response.data.installmentsPaid || 0) / 100,
           paymentHistory: paymentHistoryInReais,
@@ -244,12 +242,16 @@ const OrderEdit = () => {
       const orderData = {
         customerId: formData.customerId,
         items: itemsInCentavos,
-        totalAmount,
+        totalAmount, // CORREÇÃO: nome correto
+        // price em CENTAVOS
         price: priceCents,
+        // dia do vencimento
         installmentsTotal: formData.installmentsTotal,
-        installmentsCount: formData.installmentsCount,
+        // valor já pago em CENTAVOS
         installmentsPaid: installmentsPaidCents,
+        // quanto falta pagar (CENTAVOS) — backend também recalcula, but we send to satisfy types
         paid: remainingCents,
+        // incluir histórico para não sobrescrever no servidor
         paymentHistory: paymentHistoryInCentavos,
       };
 
@@ -388,25 +390,56 @@ const OrderEdit = () => {
       currency: "BRL",
     }).format(value);
 
+  const deleteOrder = async (id: string) => {
+    const confirmed = window.confirm(
+      "Tem certeza que deseja remover este pedido?",
+    );
+    if (!confirmed) return;
+
+    try {
+      setLoading(true);
+      const response = await api.deleteOrder(id);
+      if (response.error) {
+        throw new Error(response.error);
+      }
+      setClients((prev) => prev.filter((client) => client._id !== id));
+      toast({
+        title: "Pedido removido",
+        description: "O pedido foi removido com sucesso.",
+        variant: "default",
+      });
+    } catch (error) {
+      toast({
+        title: "Erro ao remover pedido",
+        description:
+          error instanceof Error ? error.message : "Erro desconhecido",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+
+    }
+  };
+
   return (
     <div>
-      <div className="mb-8 flex items-center gap-4">
+      <div className="mb-8 flex relative items-center justify-center gap-4">
         <button
           onClick={() => navigate("/orders")}
-          className="inline-flex items-center gap-2 text-muted-foreground transition-colors hover:text-foreground"
+          className="sm:inline-flex absolute left-0 hidden items-center gap-2 text-muted-foreground transition-colors hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
           Voltar
         </button>
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Editar Pedido</h1>
+          <h1 className="text-3xl font-bold text-center text-foreground">Editar Pedido</h1>
           <p className="mt-2 text-muted-foreground">
             Atualize as informações do pedido
           </p>
         </div>
       </div>
 
-      <div className="max-w-4xl">
+      <div className="max-w-4xl mx-auto">
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Cliente Selection */}
           <div className="rounded-lg border border-border bg-card p-6">
@@ -422,6 +455,12 @@ const OrderEdit = () => {
                   Selecione o cliente e configure o pedido
                 </p>
               </div>
+              <Trash2
+                onClick={() => {
+                  deleteOrder(id);
+                }}
+                className="ml-auto h-5 w-5 cursor-pointer text-red-600"
+              />
             </div>
 
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
@@ -615,55 +654,39 @@ const OrderEdit = () => {
             </div>
 
             <div className="space-y-4">
-              <div>
-                <label
-                  htmlFor="installmentsCount"
-                  className="mb-2 block text-sm font-medium text-foreground"
-                >
-                  Número de parcelas
+              {/* <div>
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  Valor já pago (R$)
                 </label>
-                <select
-                  id="installmentsCount"
-                  value={formData.installmentsCount || 1}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      installmentsCount: parseInt(e.target.value),
-                    }))
-                  }
-                  className="w-full rounded-lg border border-border bg-input px-4 py-3 text-foreground focus:border-transparent focus:ring-2 focus:ring-primary"
-                >
-                  {Array.from({ length: 36 }, (_, i) => i + 1).map((n) => (
-                    <option key={n} value={n}>
-                      {n} {n === 1 ? "parcela" : "parcelas"}
-                    </option>
-                  ))}
-                </select>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Escolha em quantas vezes o cliente vai pagar.
-                </p>
-              </div>
-
-              {/* Mostrar valor de cada parcela */}
-              <div className="rounded-md bg-accent/30 p-3 text-sm text-foreground">
-                <div>
-                  <strong>Valor por parcela:</strong>{" "}
-                  {formatBRL(
-                    formData.installmentsCount && formData.installmentsCount > 0
-                      ? price / formData.installmentsCount
-                      : price,
-                  )}
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground mr-2">R$</span>
+                  <input
+                    type="number"
+                    value={formData.installmentsPaid}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        installmentsPaid: parseFloat(e.target.value) || 0,
+                      }))
+                    }
+                    min="0"
+                    step="0.01"
+                    className="px-3 py-2 bg-input border border-border rounded-lg w-48"
+                  />
                 </div>
-              </div>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Informe quanto o cliente já pagou (ex.: 10.00 → R$10,00).
+                </p>
+              </div> */}
 
-              {/* Histórico de pagamentos (já existente) */}
+              {/* paymentHistory list */}
               <div>
                 <label className="mb-2 block text-sm font-medium text-foreground">
                   Histórico de pagamentos
                 </label>
                 <div className="space-y-2">
                   {formData.paymentHistory &&
-                  formData.paymentHistory.length > 0 ? (
+                    formData.paymentHistory.length > 0 ? (
                     formData.paymentHistory
                       .slice()
                       .sort(
@@ -682,6 +705,8 @@ const OrderEdit = () => {
                           <div className="font-medium transition-transform group-hover:-translate-x-7">
                             {formatBRL(ph.value)}
                           </div>
+
+                          {/* Lixeira aparece só no hover (posição absolute à direita) */}
                           <button
                             type="button"
                             onClick={() => handleDeletePayment(ph._id)}
@@ -690,11 +715,10 @@ const OrderEdit = () => {
                             className="absolute right-3 top-1/2 -translate-y-1/2 transform opacity-0 transition-opacity group-hover:opacity-100"
                           >
                             <Trash2
-                              className={`h-4 w-4 ${
-                                deletingPaymentId === ph._id
-                                  ? "text-muted-foreground"
-                                  : "text-destructive"
-                              }`}
+                              className={`h-4 w-4 ${deletingPaymentId === ph._id
+                                ? "text-muted-foreground"
+                                : "text-destructive"
+                                }`}
                             />
                           </button>
                         </div>

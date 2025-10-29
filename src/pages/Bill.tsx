@@ -1,14 +1,14 @@
-import React, { useState, useEffect } from "react";
-import { useParams, Link } from "react-router-dom";
-import { api, Order, Client, Product } from "@/services/api";
-import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Printer, Download, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
+import { api, Order, Product, PublicClient } from "@/services/api";
 import Hashids from "hashids";
+import { ArrowLeft, Share2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link, useParams } from "react-router-dom";
 
 import logo from "@/assets/logo.jpg";
 
-import { Phone, MapPin, BadgeCheck } from "lucide-react";
+import { BadgeCheck, Phone } from "lucide-react";
 
 const hashids = new Hashids("sistema", 6);
 
@@ -17,7 +17,7 @@ const Bill = () => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [order, setOrder] = useState<Order | null>(null);
-  const [client, setClient] = useState<Client | null>(null);
+  const [client, setClient] = useState<PublicClient | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
 
   id = hashids.decodeHex(id);
@@ -34,7 +34,7 @@ const Bill = () => {
     setLoading(true);
     try {
       // Carregar pedido
-      const orderResponse = await api.getOrder(id);
+      const orderResponse = await api.getPublicOrder(id);
       if (orderResponse.error || !orderResponse.data) {
         toast({
           title: "Erro",
@@ -48,13 +48,13 @@ const Bill = () => {
       setOrder(orderData);
 
       // Carregar cliente
-      const clientResponse = await api.getClient(orderData.customerId);
+      const clientResponse = await api.getPublicClient(orderData.customerId);
       if (clientResponse.data) {
         setClient(clientResponse.data);
       }
 
       // Carregar produtos
-      const productsResponse = await api.getProducts();
+      const productsResponse = await api.getPublicProducts();
       if (productsResponse.data) {
         setProducts(productsResponse.data);
       }
@@ -166,7 +166,7 @@ const Bill = () => {
             <div className="mb-6 flex flex-col items-start justify-between border-b border-border pb-6 sm:mb-8 lg:flex-row">
               <div className="mb-4 flex w-full flex-col items-center gap-4 sm:flex-row sm:items-center lg:mb-0 lg:w-auto">
                 <div className="flex h-36 w-36 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/20 to-primary/10 sm:h-36 sm:w-36 lg:h-36 lg:w-36">
-                  <img src={logo} className="w-full h-full" alt="" />
+                  <img src={logo} className="h-full w-full" alt="" />
                 </div>
                 <div className="text-center sm:text-left">
                   <p className="text-sm font-bold text-[#946545] sm:hidden sm:text-base">
@@ -180,7 +180,9 @@ const Bill = () => {
                   <div className="space-y-1 text-xs text-muted-foreground sm:text-sm">
                     <div className="flex justify-between lg:block">
                       <span className="font-medium">Chave Pix:</span>
-                      <span className="lg:block">{import.meta.env.VITE_STORE_PIX}</span>
+                      <span className="lg:block">
+                        {import.meta.env.VITE_STORE_PIX}
+                      </span>
                     </div>
                     <div className="flex justify-between lg:block">
                       <span className="font-medium">Telefone:</span>
@@ -212,14 +214,16 @@ const Bill = () => {
                   </p>
                   <p className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Phone className="h-4 w-4" />
-                    {client.telephone}
+                    {client.telephone
+                      ? client.telephone.replace(/\d(?=\d{4})/g, "*")
+                      : ""}
                   </p>
-                  {client.address && (
+                  {/* {client.address && (
                     <p className="flex items-center gap-2 text-sm text-muted-foreground">
                       <MapPin className="h-4 w-4" />
                       {client.address}
                     </p>
-                  )}
+                  )} */}
                 </div>
               </div>
               <div className="rounded-lg bg-muted/20 p-4 sm:p-5">
@@ -432,7 +436,8 @@ const Bill = () => {
               </div>
             )}
             <p className="text-xs text-gray-600 sm:text-sm">
-              Utilize a chave Pix <strong>{import.meta.env.VITE_STORE_PIX}</strong> para pagamento
+              Utilize a chave Pix{" "}
+              <strong>{import.meta.env.VITE_STORE_PIX}</strong> para pagamento
             </p>
 
             {/* Payment Info Footer */}

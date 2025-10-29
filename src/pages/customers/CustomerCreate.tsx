@@ -1,35 +1,37 @@
-import { useToast } from '@/hooks/use-toast';
-import { api } from '@/services/api';
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useToast } from "@/hooks/use-toast";
+import { api } from "@/services/api";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 const CustomerCreate = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
-    name: '',
-    telephone: '',
-    address: '',
-    anniversary: '',
-    cpf: '',
+    name: "",
+    telephone: "",
+    address: "",
+    anniversary: "",
+    cpf: "",
   });
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setFormData(prev => ({
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) => {
+    setFormData((prev) => ({
       ...prev,
-      [e.target.name]: e.target.value
+      [e.target.name]: e.target.value,
     }));
   };
 
   const validateCPF = (cpf: string) => {
-    const cleanCPF = cpf.replace(/\D/g, '');
+    const cleanCPF = cpf.replace(/\D/g, "");
     return cleanCPF.length === 11 || cleanCPF.length === 0;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!validateCPF(formData.cpf)) {
       toast({
         title: "CPF inválido",
@@ -39,11 +41,25 @@ const CustomerCreate = () => {
       return;
     }
 
+    // Remove tudo que não for número
+    formData.telephone = formData.telephone.replace(/\D/g, "");
+
+    // Telefone BR sem DDI costuma ter 10 ou 11 dígitos (com ou sem nono dígito)
+    if (formData.telephone.length < 10 || formData.telephone.length > 11) {
+      toast({
+        title: "Telefone inválido",
+        description:
+          "Por favor, insira um telefone válido com 10 ou 11 dígitos.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
-    
+
     try {
       const response = await api.createClient(formData);
-      
+
       if (response.error) {
         throw new Error(response.error);
       }
@@ -52,12 +68,13 @@ const CustomerCreate = () => {
         title: "Cliente criado com sucesso!",
         description: "O cliente foi adicionado ao sistema.",
       });
-      
-      navigate('/clients');
+
+      navigate("/clients");
     } catch (error) {
       toast({
         title: "Erro ao criar cliente",
-        description: error instanceof Error ? error.message : "Erro desconhecido",
+        description:
+          error instanceof Error ? error.message : "Erro desconhecido",
         variant: "destructive",
       });
     } finally {
@@ -66,30 +83,35 @@ const CustomerCreate = () => {
   };
 
   const formatCPF = (value: string) => {
-    const numbers = value.replace(/\D/g, '');
-    return numbers.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    const numbers = value.replace(/\D/g, "");
+    return numbers.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
   };
 
   const formatPhone = (value: string) => {
-    const numbers = value.replace(/\D/g, '');
+    const numbers = value.replace(/\D/g, "");
     if (numbers.length <= 10) {
-      return numbers.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3');
+      return numbers.replace(/(\d{2})(\d{4})(\d{4})/, "($1) $2-$3");
     }
-    return numbers.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+    return numbers.replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
   };
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="mx-auto max-w-2xl">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-foreground">Novo Cliente</h1>
-        <p className="text-muted-foreground mt-2">Cadastre um novo cliente no sistema</p>
+        <p className="mt-2 text-muted-foreground">
+          Cadastre um novo cliente no sistema
+        </p>
       </div>
 
-      <div className="bg-card rounded-lg border border-border p-6 shadow-sm">
+      <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <div className="md:col-span-2">
-              <label htmlFor="name" className="block text-sm font-medium text-foreground mb-2">
+              <label
+                htmlFor="name"
+                className="mb-2 block text-sm font-medium text-foreground"
+              >
                 Nome completo *
               </label>
               <input
@@ -99,13 +121,16 @@ const CustomerCreate = () => {
                 value={formData.name}
                 onChange={handleChange}
                 required
-                className="w-full px-4 py-3 bg-input border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                className="w-full rounded-lg border border-border bg-input px-4 py-3 focus:border-transparent focus:ring-2 focus:ring-primary"
                 placeholder="Digite o nome completo"
               />
             </div>
 
             <div>
-              <label htmlFor="telephone" className="block text-sm font-medium text-foreground mb-2">
+              <label
+                htmlFor="telephone"
+                className="mb-2 block text-sm font-medium text-foreground"
+              >
                 Telefone *
               </label>
               <input
@@ -113,15 +138,23 @@ const CustomerCreate = () => {
                 id="telephone"
                 name="telephone"
                 value={formatPhone(formData.telephone)}
-                onChange={(e) => setFormData(prev => ({ ...prev, telephone: e.target.value }))}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    telephone: e.target.value,
+                  }))
+                }
                 required
-                className="w-full px-4 py-3 bg-input border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                className="w-full rounded-lg border border-border bg-input px-4 py-3 focus:border-transparent focus:ring-2 focus:ring-primary"
                 placeholder="(11) 99999-9999"
               />
             </div>
 
             <div>
-              <label htmlFor="cpf" className="block text-sm font-medium text-foreground mb-2">
+              <label
+                htmlFor="cpf"
+                className="mb-2 block text-sm font-medium text-foreground"
+              >
                 CPF
               </label>
               <input
@@ -129,15 +162,20 @@ const CustomerCreate = () => {
                 id="cpf"
                 name="cpf"
                 value={formatCPF(formData.cpf)}
-                onChange={(e) => setFormData(prev => ({ ...prev, cpf: e.target.value }))}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, cpf: e.target.value }))
+                }
                 // required
-                className="w-full px-4 py-3 bg-input border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                className="w-full rounded-lg border border-border bg-input px-4 py-3 focus:border-transparent focus:ring-2 focus:ring-primary"
                 placeholder="000.000.000-00"
               />
             </div>
 
             <div>
-              <label htmlFor="anniversary" className="block text-sm font-medium text-foreground mb-2">
+              <label
+                htmlFor="anniversary"
+                className="mb-2 block text-sm font-medium text-foreground"
+              >
                 Data de aniversário
               </label>
               <input
@@ -146,12 +184,15 @@ const CustomerCreate = () => {
                 name="anniversary"
                 value={formData.anniversary}
                 onChange={handleChange}
-                className="w-full px-4 py-3 bg-input border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                className="w-full rounded-lg border border-border bg-input px-4 py-3 focus:border-transparent focus:ring-2 focus:ring-primary"
               />
             </div>
 
             <div className="md:col-span-2">
-              <label htmlFor="address" className="block text-sm font-medium text-foreground mb-2">
+              <label
+                htmlFor="address"
+                className="mb-2 block text-sm font-medium text-foreground"
+              >
                 Endereço
               </label>
               <textarea
@@ -160,24 +201,24 @@ const CustomerCreate = () => {
                 value={formData.address}
                 onChange={handleChange}
                 rows={3}
-                className="w-full px-4 py-3 bg-input border border-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
+                className="w-full resize-none rounded-lg border border-border bg-input px-4 py-3 focus:border-transparent focus:ring-2 focus:ring-primary"
                 placeholder="Rua, número, bairro, cidade, CEP"
               />
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-4 pt-6">
+          <div className="flex flex-col gap-4 pt-6 sm:flex-row">
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 bg-primary text-primary-foreground py-3 px-6 rounded-lg font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+              className="flex-1 rounded-lg bg-primary px-6 py-3 font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
             >
-              {loading ? 'Salvando...' : 'Salvar Cliente'}
+              {loading ? "Salvando..." : "Salvar Cliente"}
             </button>
             <button
               type="button"
-              onClick={() => navigate('/clients')}
-              className="flex-1 bg-secondary text-secondary-foreground py-3 px-6 rounded-lg font-medium hover:bg-accent transition-colors"
+              onClick={() => navigate("/clients")}
+              className="flex-1 rounded-lg bg-secondary px-6 py-3 font-medium text-secondary-foreground transition-colors hover:bg-accent"
             >
               Cancelar
             </button>

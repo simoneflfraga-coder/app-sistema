@@ -141,23 +141,23 @@ const ProductEdit = () => {
 
   return (
     <div>
-      <div className="flex items-center gap-4 mb-8">
+      <div className="flex items-center relative justify-center mb-8">
         <button
           onClick={() => navigate("/products")}
-          className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
+          className="sm:inline-flex items-center gap-2 hidden left-0 absolute text-muted-foreground hover:text-foreground transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
           Voltar
         </button>
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Editar Produto</h1>
+          <h1 className="text-3xl text-center font-bold text-foreground">Editar Produto</h1>
           <p className="text-muted-foreground mt-2">
             Atualize as informações do produto
           </p>
         </div>
       </div>
 
-      <div className="max-w-2xl">
+      <div className="max-w-2xl mx-auto">
         <form
           onSubmit={handleSubmit}
           className="bg-card border border-border rounded-lg p-6 space-y-6"
