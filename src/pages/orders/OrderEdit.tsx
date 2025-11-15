@@ -13,6 +13,13 @@ import { useNavigate, useParams } from "react-router-dom";
 
 type PaymentEntry = { _id?: string; date: string; value: number }; // value em REAIS no UI
 
+type InstallmentUI = {
+  number: number;
+  dueDate: string; // "YYYY-MM-DD" para input
+  amount: number; // em REAIS no UI
+  status: "pendente" | "pago" | "atrasado";
+};
+
 const OrderEdit = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -30,7 +37,7 @@ const OrderEdit = () => {
   const [newPaymentDate, setNewPaymentDate] = useState<string>(() => {
     const today = new Date();
     const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, "0"); // mês começa do 0
+    const month = String(today.getMonth() + 1).padStart(2, "0");
     const day = String(today.getDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
   }); // yyyy-mm-dd optional
@@ -38,10 +45,13 @@ const OrderEdit = () => {
   const [formData, setFormData] = useState({
     customerId: "",
     items: [] as OrderItem[], // unitPrice em REAIS no UI
-    installmentsTotal: 1, // dia do mês (1..31)
+    installmentsTotal: 1, // dia do mês (1..31) - compatibilidade
     installmentsPaid: 0, // REAIS no UI
     paymentHistory: [] as PaymentEntry[], // REAIS no UI
   });
+
+  // novo estado: installments detalhados para editar (UI)
+  const [installments, setInstallments] = useState<InstallmentUI[]>([]);
 
   useEffect(() => {
     loadInitialData();
@@ -67,6 +77,13 @@ const OrderEdit = () => {
         variant: "destructive",
       });
     }
+  };
+
+  const toYMD = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
   };
 
   const loadOrder = async (orderId: string) => {
@@ -96,6 +113,50 @@ const OrderEdit = () => {
           }),
         );
 
+        // installments: converter do servidor (centavos + ISO) para UI (REAIS + YYYY-MM-DD)
+        let installmentsUI: InstallmentUI[] = [];
+        if (
+          Array.isArray(response.data.installments) &&
+          response.data.installments.length > 0
+        ) {
+          installmentsUI = response.data.installments.map(
+            (inst: any, idx: number) => {
+              // guardas seguros
+              const number = inst.number ?? idx + 1;
+              const amountCents = Number(inst.amount ?? 0);
+              const amountReais = Math.round(amountCents) / 100;
+              let dueDateYmd = toYMD(new Date());
+              if (inst.dueDate) {
+                const dt = new Date(inst.dueDate);
+                if (!isNaN(dt.getTime())) {
+                  dueDateYmd = toYMD(dt);
+                }
+              }
+              const status =
+                inst.status === "pago" || inst.status === "atrasado"
+                  ? inst.status
+                  : "pendente";
+
+              return {
+                number: Number(number),
+                dueDate: dueDateYmd,
+                amount: amountReais,
+                status,
+              } as InstallmentUI;
+            },
+          );
+        } else {
+          // fallback: criar uma parcela única com dueDate hoje
+          installmentsUI = [
+            {
+              number: 1,
+              dueDate: toYMD(new Date()),
+              amount: (response.data.price || 0) / 100,
+              status: "pendente",
+            },
+          ];
+        }
+
         setFormData({
           customerId: response.data.customerId,
           items: itemsInReais,
@@ -104,11 +165,12 @@ const OrderEdit = () => {
           installmentsPaid: (response.data.installmentsPaid || 0) / 100,
           paymentHistory: paymentHistoryInReais,
         });
+
+        setInstallments(installmentsUI);
       }
 
       const responseOne = await api.getClient(response.data.customerId);
-
-      setNameCustomer(responseOne.data.name);
+      if (responseOne.data) setNameCustomer(responseOne.data.name);
     } catch (error) {
       toast({
         title: "Erro ao carregar pedido",
@@ -175,6 +237,51 @@ const OrderEdit = () => {
     return { totalAmount, price };
   };
 
+  // --- NOVAS FUNÇÕES PARA INSTALLMENTS (UI) ---
+
+  function updateInstallmentField(
+    index: number,
+    field: keyof InstallmentUI,
+    value: any,
+  ) {
+    setInstallments((prev) =>
+      prev.map((it, i) => (i === index ? { ...it, [field]: value } : it)),
+    );
+  }
+
+  function addInstallment() {
+    setInstallments((prev) => {
+      const nextNum = prev.length + 1;
+      // default: next month same day as last or today
+      const lastDate = prev.length
+        ? new Date(prev[prev.length - 1].dueDate)
+        : new Date();
+      const d = new Date(lastDate);
+      d.setMonth(d.getMonth() + 1);
+      const dueDefault = toYMD(d);
+      return [
+        ...prev,
+        {
+          number: nextNum,
+          dueDate: dueDefault,
+          amount: prev.length ? prev[prev.length - 1].amount : 0,
+          status: "pendente",
+        },
+      ];
+    });
+  }
+
+  function removeInstallment(index: number) {
+    setInstallments((prev) => {
+      const next = prev
+        .filter((_, i) => i !== index)
+        .map((it, i) => ({ ...it, number: i + 1 }));
+      return next;
+    });
+  }
+
+  // --- FIM installments helpers ---
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -204,11 +311,46 @@ const OrderEdit = () => {
 
     if (!id) return;
 
-    // valida day 1..31
+    // valida day 1..31 (mantive sua validação original)
     if (formData.installmentsTotal < 1 || formData.installmentsTotal > 31) {
       toast({
         title: "Dia de vencimento inválido",
         description: "Escolha um dia entre 1 e 31 para o vencimento.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // valida installments UI: cada parcela precisa ter data válida e amount >= 0
+    if (!installments || installments.length === 0) {
+      toast({
+        title: "Parcelas inválidas",
+        description: "Insira ao menos uma parcela.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (
+      installments.some(
+        (it) => !it.dueDate || isNaN(new Date(it.dueDate).getTime()),
+      )
+    ) {
+      toast({
+        title: "Datas inválidas",
+        description: "Preencha datas válidas para todas as parcelas.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (
+      installments.some(
+        (it) =>
+          typeof it.amount !== "number" || isNaN(it.amount) || it.amount < 0,
+      )
+    ) {
+      toast({
+        title: "Valores inválidos",
+        description: "Preencha valores válidos (R$) para todas as parcelas.",
         variant: "destructive",
       });
       return;
@@ -239,20 +381,43 @@ const OrderEdit = () => {
         }),
       );
 
+      // converter installments do UI (REAIS + YYYY-MM-DD) -> servidor (centavos + ISO)
+      const installmentsForServer = installments.map((it) => {
+        // usa meio-dia UTC para reduzir problemas de fuso
+        const dueIso = new Date(`${it.dueDate}T12:00:00Z`).toISOString();
+        return {
+          number: Number(it.number),
+          dueDate: dueIso,
+          amount: Math.round((it.amount || 0) * 100),
+          status: it.status,
+        };
+      });
+
+      // parcelas e parcelasPagas
+      const parcelasCount = installmentsForServer.length;
+      const parcelasPagasCount = installmentsForServer.filter(
+        (it) => it.status === "pago",
+      ).length;
+
       const orderData = {
         customerId: formData.customerId,
         items: itemsInCentavos,
         totalAmount, // CORREÇÃO: nome correto
         // price em CENTAVOS
         price: priceCents,
-        // dia do vencimento
+        // dia do vencimento (campo mantido por compatibilidade)
         installmentsTotal: formData.installmentsTotal,
-        // valor já pago em CENTAVOS
+        // valor já pago em CENTAVOS (envia, mas o backend pode recalcular)
         installmentsPaid: installmentsPaidCents,
         // quanto falta pagar (CENTAVOS) — backend também recalcula, but we send to satisfy types
         paid: remainingCents,
-        // incluir histórico para não sobrescrever no servidor
+        // incluir histórico (centavos)
         paymentHistory: paymentHistoryInCentavos,
+        // incluir installments detalhados (obrigatório no seu schema)
+        installments: installmentsForServer,
+        // compatibilidade com os campos antigos
+        parcelas: parcelasCount,
+        parcelasPagas: parcelasPagasCount,
       };
 
       const response = await api.updateOrder(id, orderData);
@@ -300,14 +465,12 @@ const OrderEdit = () => {
     const paymentToSend = { date: dateIso, value: cents };
 
     try {
-      // usar endpoint dedicado
       if (typeof api.addPayment === "function") {
         const res = await api.addPayment(id, paymentToSend, nameCustomer);
         if (res.error) throw new Error(res.error);
-        // recarrega o pedido atual do servidor
+        // recarrega o pedido atual do servidor (vai recalcular installmentsPaid/padi)
         await loadOrder(id);
       } else {
-        // fallback: (redundante pois você já adicionou api.addPayment) - buscar pedido e anexar
         const serverResp = await api.getOrder(id);
         if (serverResp.error) throw new Error(serverResp.error);
         const serverOrder = serverResp.data;
@@ -402,12 +565,12 @@ const OrderEdit = () => {
       if (response.error) {
         throw new Error(response.error);
       }
-      setClients((prev) => prev.filter((client) => client._id !== id));
       toast({
         title: "Pedido removido",
         description: "O pedido foi removido com sucesso.",
         variant: "default",
       });
+      navigate("/orders");
     } catch (error) {
       toast({
         title: "Erro ao remover pedido",
@@ -417,29 +580,30 @@ const OrderEdit = () => {
       });
     } finally {
       setLoading(false);
-
     }
   };
 
   return (
     <div>
-      <div className="mb-8 flex relative items-center justify-center gap-4">
+      <div className="relative mb-8 flex items-center justify-center gap-4">
         <button
           onClick={() => navigate("/orders")}
-          className="sm:inline-flex absolute left-0 hidden items-center gap-2 text-muted-foreground transition-colors hover:text-foreground"
+          className="absolute left-0 hidden items-center gap-2 text-muted-foreground transition-colors hover:text-foreground sm:inline-flex"
         >
           <ArrowLeft className="h-4 w-4" />
           Voltar
         </button>
         <div>
-          <h1 className="text-3xl font-bold text-center text-foreground">Editar Pedido</h1>
+          <h1 className="text-center text-3xl font-bold text-foreground">
+            Editar Pedido
+          </h1>
           <p className="mt-2 text-muted-foreground">
             Atualize as informações do pedido
           </p>
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto">
+      <div className="mx-auto max-w-4xl">
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Cliente Selection */}
           <div className="rounded-lg border border-border bg-card p-6">
@@ -457,7 +621,7 @@ const OrderEdit = () => {
               </div>
               <Trash2
                 onClick={() => {
-                  deleteOrder(id);
+                  if (id) deleteOrder(id);
                 }}
                 className="ml-auto h-5 w-5 cursor-pointer text-red-600"
               />
@@ -490,35 +654,6 @@ const OrderEdit = () => {
                     </option>
                   ))}
                 </select>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="installmentsTotal"
-                  className="mb-2 block text-sm font-medium text-foreground"
-                >
-                  Dia do vencimento
-                </label>
-                <select
-                  id="installmentsTotal"
-                  value={formData.installmentsTotal}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      installmentsTotal: parseInt(e.target.value),
-                    }))
-                  }
-                  className="w-full rounded-lg border border-border bg-input px-4 py-3 text-foreground focus:border-transparent focus:ring-2 focus:ring-primary"
-                >
-                  {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
-                    <option key={d} value={d}>
-                      {d}
-                    </option>
-                  ))}
-                </select>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  A parcela vence todo dia selecionado do mês.
-                </p>
               </div>
             </div>
           </div>
@@ -645,48 +780,118 @@ const OrderEdit = () => {
             </div>
           </div>
 
-          {/* Parcelamento (ajustado) */}
+          {/* Parcelamento (editável por parcela) */}
           <div className="rounded-lg border border-border bg-card p-6">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-foreground">
                 Parcelamento
               </h3>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={addInstallment}
+                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-1 text-primary-foreground transition-opacity hover:opacity-90"
+                >
+                  <Plus className="h-4 w-4" />
+                  Adicionar Parcela
+                </button>
+              </div>
             </div>
 
             <div className="space-y-4">
-              {/* <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  Valor já pago (R$)
-                </label>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground mr-2">R$</span>
-                  <input
-                    type="number"
-                    value={formData.installmentsPaid}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        installmentsPaid: parseFloat(e.target.value) || 0,
-                      }))
-                    }
-                    min="0"
-                    step="0.01"
-                    className="px-3 py-2 bg-input border border-border rounded-lg w-48"
-                  />
-                </div>
-                <p className="text-sm text-muted-foreground mt-2">
-                  Informe quanto o cliente já pagou (ex.: 10.00 → R$10,00).
-                </p>
-              </div> */}
+              {/* Lista de parcelas editáveis */}
+              <div className="space-y-2">
+                {installments.map((inst, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center gap-3 rounded-lg border border-border p-3"
+                  >
+                    <div className="w-8 text-sm text-muted-foreground">
+                      #{inst.number}
+                    </div>
 
-              {/* paymentHistory list */}
+                    <div className="grid flex-1 grid-cols-1 gap-2 sm:grid-cols-3">
+                      <div>
+                        <label className="text-xs text-muted-foreground">
+                          Data
+                        </label>
+                        <input
+                          type="date"
+                          value={inst.dueDate}
+                          onChange={(e) =>
+                            updateInstallmentField(
+                              idx,
+                              "dueDate",
+                              e.target.value,
+                            )
+                          }
+                          className="w-full rounded-lg border border-border bg-input px-3 py-2"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs text-muted-foreground">
+                          Valor (R$)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={String(inst.amount)}
+                          onChange={(e) =>
+                            updateInstallmentField(
+                              idx,
+                              "amount",
+                              parseFloat(e.target.value) || 0,
+                            )
+                          }
+                          className="w-full rounded-lg border border-border bg-input px-3 py-2"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs text-muted-foreground">
+                          Status
+                        </label>
+                        <select
+                          value={inst.status}
+                          onChange={(e) =>
+                            updateInstallmentField(
+                              idx,
+                              "status",
+                              e.target.value as InstallmentUI["status"],
+                            )
+                          }
+                          className="w-full rounded-lg border border-border bg-input px-3 py-2"
+                        >
+                          <option value="pendente">Pendente</option>
+                          <option value="pago">Pago</option>
+                          <option value="atrasado">Atrasado</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => removeInstallment(idx)}
+                        className="rounded-lg p-2 text-destructive hover:bg-destructive/10"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Histórico de pagamentos */}
               <div>
                 <label className="mb-2 block text-sm font-medium text-foreground">
                   Histórico de pagamentos
                 </label>
                 <div className="space-y-2">
                   {formData.paymentHistory &&
-                    formData.paymentHistory.length > 0 ? (
+                  formData.paymentHistory.length > 0 ? (
                     formData.paymentHistory
                       .slice()
                       .sort(
@@ -706,7 +911,6 @@ const OrderEdit = () => {
                             {formatBRL(ph.value)}
                           </div>
 
-                          {/* Lixeira aparece só no hover (posição absolute à direita) */}
                           <button
                             type="button"
                             onClick={() => handleDeletePayment(ph._id)}
@@ -715,10 +919,7 @@ const OrderEdit = () => {
                             className="absolute right-3 top-1/2 -translate-y-1/2 transform opacity-0 transition-opacity group-hover:opacity-100"
                           >
                             <Trash2
-                              className={`h-4 w-4 ${deletingPaymentId === ph._id
-                                ? "text-muted-foreground"
-                                : "text-destructive"
-                                }`}
+                              className={`h-4 w-4 ${deletingPaymentId === ph._id ? "text-muted-foreground" : "text-destructive"}`}
                             />
                           </button>
                         </div>

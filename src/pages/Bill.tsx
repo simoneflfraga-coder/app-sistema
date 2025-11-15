@@ -6,11 +6,19 @@ import { ArrowLeft, Share2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import logo from "@/assets/logoS.jpg";
+import logo from "@/assets/logoS.jpeg";
 
 import { BadgeCheck, Phone } from "lucide-react";
 
 const hashids = new Hashids("sistema", 6);
+
+interface Installment {
+  number: number;
+  dueDate: string;
+  amount: number;
+  status?: string; // status is required
+  _id?: string;
+}
 
 const Bill = () => {
   let { id } = useParams();
@@ -19,6 +27,9 @@ const Bill = () => {
   const [order, setOrder] = useState<Order | null>(null);
   const [client, setClient] = useState<PublicClient | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
+  const [nextInstallment, setNextInstallment] = useState<Installment | null>(
+    null,
+  );
 
   id = hashids.decodeHex(id);
 
@@ -35,6 +46,7 @@ const Bill = () => {
     try {
       // Carregar pedido
       const orderResponse = await api.getPublicOrder(id);
+      console.log(orderResponse);
       if (orderResponse.error || !orderResponse.data) {
         toast({
           title: "Erro",
@@ -68,6 +80,31 @@ const Bill = () => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!order?.installments?.length) {
+      setNextInstallment(null);
+      return;
+    }
+
+    // considera como "paga" qualquer status que contenha 'pago'/'paga' (case-insensitive)
+    const pendentes = order.installments.filter((inst) => {
+      const s = (inst.status || "").toString().toLowerCase();
+      return !(s.includes("pago") || s.includes("paga") || s === "paid"); // mantém flexibilidade
+    });
+
+    if (pendentes.length === 0) {
+      setNextInstallment(null);
+      return;
+    }
+
+    // ordenar por dueDate ascendente e pegar o primeiro (mais antigo = próximo a ser pago / mais atrasado)
+    const sorted = [...pendentes].sort(
+      (a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime(),
+    );
+
+    setNextInstallment(sorted[0]);
+  }, [order]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("pt-BR", {
@@ -248,6 +285,18 @@ const Bill = () => {
                       {getLastPaymentDate()
                         ? formatDate(getLastPaymentDate()!)
                         : "Nenhum"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">
+                      Próxima parcela
+                    </span>
+                    <span
+                      className={`text-sm font-medium ${nextInstallment && new Date(nextInstallment.dueDate).getTime() < Date.now() ? "text-destructive" : ""}`}
+                    >
+                      {nextInstallment
+                        ? `${formatDate(nextInstallment.dueDate)}`
+                        : "Nenhuma pendente"}
                     </span>
                   </div>
                 </div>
@@ -439,6 +488,21 @@ const Bill = () => {
               Utilize a chave Pix{" "}
               <strong>{import.meta.env.VITE_STORE_PIX}</strong> para pagamento
             </p>
+
+            <div className="my-4 flex justify-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  navigator.clipboard.writeText(
+                    import.meta.env.VITE_STORE_PIX || "",
+                  );
+                  toast({ title: "Chave Pix copiada!" });
+                }}
+              >
+                Copiar chave Pix
+              </Button>
+            </div>
 
             {/* Payment Info Footer */}
             <div className="rounded-lg bg-muted/30 p-4 text-center sm:p-6">

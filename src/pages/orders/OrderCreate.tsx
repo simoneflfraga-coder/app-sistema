@@ -1,7 +1,7 @@
 import { useToast } from "@/hooks/use-toast";
 import { api, Client, OrderItem, Product } from "@/services/api";
 import { Minus, Plus, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 interface OrderFormItem extends OrderItem {
@@ -16,17 +16,53 @@ const OrderCreate = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [orderItems, setOrderItems] = useState<OrderFormItem[]>([]);
+  const [selectedVendedora, setSelectedVendedora] = useState<string>("");
 
-  // NOTE: mantive o nome "installments" para encaixar com o campo installmentsTotal no payload.
-  // Agora este valor representa o DIA DO MÊS (1..31).
-  const [installments, setInstallments] = useState<number>(1);
+  // Agora: número de parcelas (quantidade)
+  const [parcelas, setParcelas] = useState<number>(1);
+
+  // Estado com as datas específicas de cada parcela no formato 'YYYY-MM-DD'
+  const [installmentDates, setInstallmentDates] = useState<string[]>([]);
 
   // Valor já pago em REAIS no input (converteremos para centavos ao enviar)
   const [amountPaid, setAmountPaid] = useState<number>(0);
 
+  const vendedoras = useMemo(
+    () =>
+      (import.meta.env.VITE_VENDEDORAS ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+    [],
+  );
+
   useEffect(() => {
     loadData();
+    console.log("vendedoras: " + vendedoras);
   }, []);
+
+  // Quando a quantidade de parcelas mudar, ajusta o array de datas (cria defaults ou corta)
+  useEffect(() => {
+    setInstallmentDates((prev) => {
+      const targetLen = Math.max(1, parcelas || 1);
+      if (prev.length === targetLen) return prev;
+      const res = prev.slice(0, targetLen);
+      if (res.length < targetLen) {
+        // adicionar datas default incrementando meses a partir de hoje
+        const needed = targetLen - res.length;
+        const lastDate = res.length
+          ? new Date(res[res.length - 1])
+          : new Date();
+        for (let i = 0; i < needed; i++) {
+          const d = new Date();
+          d.setMonth(d.getMonth() + res.length + i);
+          res.push(formatDateInput(d));
+        }
+      }
+      return res;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parcelas]);
 
   const loadData = async () => {
     try {
@@ -121,6 +157,95 @@ const OrderCreate = () => {
   const installmentsPaidCents = Math.round(amountPaid * 100);
   const remainingCents = Math.max(0, totalPriceCents - installmentsPaidCents);
 
+  // Helper: formata date para input type="date" (YYYY-MM-DD)
+  function formatDateInput(d: Date) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+
+  // Atualiza a data da parcela indexada
+  function updateInstallmentDate(index: number, value: string) {
+    setInstallmentDates((prev) => {
+      const copy = prev.slice();
+      copy[index] = value;
+      return copy;
+    });
+  }
+
+  // Monta o array de installments detalhados usando datas específicas (installmentDates)
+  function buildInstallments(
+    instalCount: number,
+    dates: string[] | undefined,
+    totalCents: number,
+    paidCents: number,
+  ) {
+    const installmentsArr: {
+      number: number;
+      dueDate: string;
+      amount: number;
+      status: "pendente" | "pago" | "atrasado";
+    }[] = [];
+
+    if (!instalCount || instalCount < 1) return installmentsArr;
+
+    // divisão base das centavos entre parcelas
+    const base = Math.floor(totalCents / instalCount);
+    const remainder = totalCents - base * instalCount; // distribuir 1 cent a mais para as primeiras 'remainder' parcelas
+
+    // valor remanescente para marcar parcelas como pagas
+    let paidLeft = Math.max(0, paidCents);
+
+    for (let i = 0; i < instalCount; i++) {
+      // calcular valor da parcela (distribui o remainder nos primeiros itens)
+      const extra = i < remainder ? 1 : 0;
+      const amount = base + extra;
+
+      // usar data fornecida se existir; senão fallback para hoje + i meses
+      let dueDateIso: string;
+      const dateStr = dates && dates[i];
+      if (dateStr) {
+        // normaliza string 'YYYY-MM-DD' para ISO
+        const dt = new Date(dateStr + "T00:00:00");
+        if (isNaN(dt.getTime())) {
+          // fallback se data inválida
+          const f = new Date();
+          f.setMonth(f.getMonth() + i);
+          dueDateIso = formatDateInput(f) + "T00:00:00.000Z";
+        } else {
+          dueDateIso = new Date(
+            dt.getFullYear(),
+            dt.getMonth(),
+            dt.getDate(),
+          ).toISOString();
+        }
+      } else {
+        const f = new Date();
+        f.setMonth(f.getMonth() + i);
+        dueDateIso = new Date(
+          f.getFullYear(),
+          f.getMonth(),
+          f.getDate(),
+        ).toISOString();
+      }
+
+      // marcar 'pago' se já houver saldo pago cobrindo essa parcela
+      const status: "pendente" | "pago" | "atrasado" =
+        paidLeft >= amount ? "pago" : "pendente";
+      if (paidLeft >= amount) paidLeft -= amount;
+
+      installmentsArr.push({
+        number: i + 1,
+        dueDate: dueDateIso,
+        amount,
+        status,
+      });
+    }
+
+    return installmentsArr;
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -142,11 +267,15 @@ const OrderCreate = () => {
       return;
     }
 
-    // valida day 1..31
-    if (installments < 1 || installments > 31) {
+    // valida datas das parcelas: se alguma for vazia -> erro
+    if (
+      !installmentDates ||
+      installmentDates.length !== parcelas ||
+      installmentDates.some((d) => !d)
+    ) {
       toast({
-        title: "Dia de vencimento inválido",
-        description: "Escolha um dia entre 1 e 31 para o vencimento.",
+        title: "Datas das parcelas inválidas",
+        description: "Preencha uma data válida para cada parcela.",
         variant: "destructive",
       });
       return;
@@ -155,6 +284,19 @@ const OrderCreate = () => {
     setLoading(true);
 
     try {
+      // montar installments detalhados usando as datas específicas
+      const installmentsArray = buildInstallments(
+        parcelas,
+        installmentDates,
+        totalPriceCents,
+        installmentsPaidCents,
+      );
+
+      // calcular quantas parcelas ficaram marcadas como pagas
+      const parcelasPagasComputed = installmentsArray.filter(
+        (it) => it.status === "pago",
+      ).length;
+
       const orderData = {
         customerId: selectedCustomerId,
         items: orderItems.map((item) => ({
@@ -168,10 +310,20 @@ const OrderCreate = () => {
         // enviar totalPrice em CENTAVOS
         price: totalPriceCents,
         // agora: dia do mês que vence
-        installmentsTotal: installments,
+        installmentsTotal: parcelas,
         // agora: valor já pago em CENTAVOS
         installmentsPaid: installmentsPaidCents,
-        paid: totalPriceCents - installmentsPaidCents,
+        paid: Math.max(0, totalPriceCents - installmentsPaidCents),
+        parcelas: parcelas,
+        parcelasPagas: parcelasPagasComputed,
+
+        // O array detalhado que o model exige (datas específicas)
+        installments: installmentsArray,
+
+        // inicializa histórico de pagamentos vazio (backend recalcula instalmentsPaid/paid a partir deste campo)
+        paymentHistory: [],
+
+        vendedora: selectedVendedora,
 
         // não enviamos `paid` — backend recalcula
       };
@@ -210,6 +362,14 @@ const OrderCreate = () => {
 
   const availableProducts = products.filter(
     (p) => p.stock > 0 && !orderItems.some((item) => item.productId === p._id),
+  );
+
+  // preview das parcelas (apenas para visualização no frontend)
+  const installmentsPreview = buildInstallments(
+    parcelas,
+    installmentDates,
+    totalPriceCents,
+    installmentsPaidCents,
   );
 
   return (
@@ -369,6 +529,37 @@ const OrderCreate = () => {
           </div>
         )}
 
+        <div className="rounded-lg border border-border bg-card p-6">
+          <h2 className="mb-4 text-xl font-semibold text-foreground">
+            Vendedora:
+          </h2>
+
+          <div className="space-y-4">
+            {vendedoras.map((nome, i) => (
+              <div key={nome + i} className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  id={`vendedora-${i}`}
+                  name="vendedora"
+                  value={nome}
+                  checked={selectedVendedora === nome}
+                  onChange={() => {
+                    setSelectedVendedora(nome);
+                    console.log(selectedVendedora);
+                  }}
+                  className="accent-primary"
+                />
+                <label
+                  htmlFor={`vendedora-${i}`}
+                  className="text-sm text-foreground"
+                >
+                  {nome}
+                </label>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* Summary */}
         {orderItems.length > 0 && (
           <div className="rounded-lg border border-border bg-card p-6">
@@ -377,54 +568,81 @@ const OrderCreate = () => {
             </h2>
 
             <div className="space-y-4">
-              {/* Dia do vencimento */}
+              {/* Quantidade de parcelas */}
               <div className="flex items-center gap-4">
                 <label
-                  htmlFor="installmentDay"
+                  htmlFor="parcelas"
                   className="text-sm font-medium text-foreground"
                 >
-                  Dia do vencimento:
+                  Quantidade de parcelas:
                 </label>
                 <select
-                  id="installmentDay"
-                  value={installments}
-                  onChange={(e) => setInstallments(parseInt(e.target.value))}
+                  id="parcelas"
+                  value={parcelas}
+                  onChange={(e) => setParcelas(parseInt(e.target.value))}
                   className="rounded-lg border border-border bg-input px-3 py-2"
                 >
-                  {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((d) => (
                     <option key={d} value={d}>
                       {d}
                     </option>
                   ))}
                 </select>
                 <span className="ml-3 hidden text-sm text-muted-foreground sm:block">
-                  Parcela vence todo dia selecionado do mês
+                  Quantidade de parcelas do pedido
                 </span>
               </div>
 
-              {/* Valor já pago */}
-              {/* <div className="flex items-center gap-4">
-                <label
-                  htmlFor="amountPaid"
-                  className="text-sm font-medium text-foreground"
-                >
-                  Valor já pago:
+              {/* Datas específicas por parcela */}
+              <div className="mt-4">
+                <label className="text-sm font-medium text-foreground">
+                  Datas de vencimento por parcela
                 </label>
-                <div className="flex items-center">
-                  <span className="text-sm text-muted-foreground mr-2">R$</span>
-                  <input
-                    id="amountPaid"
-                    type="number"
-                    value={amountPaid}
-                    onChange={(e) =>
-                      setAmountPaid(parseFloat(e.target.value) || 0)
-                    }
-                    min="0"
-                    step="0.01"
-                    className="px-3 py-2 bg-input border border-border rounded-lg w-36"
-                  />
+                <p className="text-xs text-muted-foreground">
+                  Preencha a data específica de vencimento para cada parcela.
+                </p>
+
+                <div className="mt-2 grid gap-2 sm:grid-cols-2 md:grid-cols-3">
+                  {Array.from({ length: parcelas }).map((_, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <span className="w-6 text-sm text-muted-foreground">
+                        #{idx + 1}
+                      </span>
+                      <input
+                        type="date"
+                        value={installmentDates[idx] ?? ""}
+                        onChange={(e) =>
+                          updateInstallmentDate(idx, e.target.value)
+                        }
+                        className="rounded-lg border border-border bg-input px-3 py-2"
+                      />
+                    </div>
+                  ))}
                 </div>
-              </div> */}
+
+                {/* preview das parcelas (datas & valor por parcela) */}
+                <div className="mt-4 rounded-md border border-border bg-muted p-3 text-sm">
+                  <div className="mb-2 font-medium">Preview das parcelas</div>
+                  {installmentsPreview.length === 0 ? (
+                    <div className="text-xs text-muted-foreground">
+                      Nenhuma parcela calculada
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      {installmentsPreview.map((it) => (
+                        <div key={it.number} className="flex justify-between">
+                          <div>
+                            #{it.number} —{" "}
+                            {new Date(it.dueDate).toLocaleDateString()}
+                            {it.status === "pago" ? " • Pago" : ""}
+                          </div>
+                          <div>{formatCurrency(it.amount / 100)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
 
               <div className="space-y-2 border-t border-border pt-4">
                 <div className="flex justify-between text-sm">
@@ -435,6 +653,15 @@ const OrderCreate = () => {
                   <span className="font-medium text-foreground">Total:</span>
                   <span className="text-bold text-primary">
                     {formatCurrency(totalPrice)}
+                  </span>
+                </div>
+
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">
+                    Valor da parcela (média):
+                  </span>
+                  <span className="font-medium">
+                    {formatCurrency(totalPrice / parcelas)}
                   </span>
                 </div>
 

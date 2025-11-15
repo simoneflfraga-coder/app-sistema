@@ -150,9 +150,69 @@ const OrderList = () => {
   };
 
   // Retorna um objeto com informações sobre o próximo vencimento:
-  // { candidateDate: Date | null, daysUntilDue: number (>=0 if future), overdue: boolean, daysOverdue: number (>=0) }
-  // Se installmentsTotal inválido retorna candidateDate null e daysUntilDue = Infinity
+  // { candidateDate: Date | null, daysUntilDue: number (>=0 if future), overdue: boolean, daysOverdue: number (>=0), nextInstallmentNumber?: number, nextInstallmentAmount?: number }
+  // Faz *primeiro* tentativa por order.installments (próxima parcela não-paga).
+  // Se não encontrar installments válidos, faz fallback para o antigo comportamento baseado em installmentsTotal (dia do mês).
   const computeDueInfo = (order: OrderWithClient) => {
+    // Helper safe parse date
+    const parseDateSafe = (d: any) => {
+      if (!d) return null;
+      const dt = new Date(d);
+      return isNaN(dt.getTime()) ? null : dt;
+    };
+
+    // 1) Se houver installments (array de subdocumentos) -> encontrar próxima parcela NÃO paga
+    if (
+      order.installments &&
+      Array.isArray(order.installments) &&
+      order.installments.length > 0
+    ) {
+      // considerar parcelas com dueDate válido
+      const unpaidWithDates = order.installments
+        .filter((inst) => !inst || inst.status !== "pago") // manter elementos falsy? filtramos depois
+        .map((inst) => ({
+          inst,
+          due: parseDateSafe(inst?.dueDate),
+        }))
+        .filter((x) => x.due); // só com data válida
+
+      if (unpaidWithDates.length > 0) {
+        // ordenar por dueDate asc
+        unpaidWithDates.sort((a, b) => a.due.getTime() - b.due.getTime());
+        const next = unpaidWithDates[0];
+        const candidate = next.due;
+        const now = new Date();
+        const diffMs = candidate.getTime() - now.getTime();
+        const oneDay = 1000 * 60 * 60 * 24;
+        const daysUntilDueRaw = Math.ceil(diffMs / oneDay);
+        const daysUntilDue = daysUntilDueRaw >= 0 ? daysUntilDueRaw : 0;
+        const overdue = candidate.getTime() < now.getTime();
+        const daysOverdue = overdue
+          ? Math.ceil((now.getTime() - candidate.getTime()) / oneDay)
+          : 0;
+
+        return {
+          candidateDate: candidate,
+          daysUntilDue,
+          overdue,
+          daysOverdue,
+          nextInstallmentNumber: Number(next.inst?.number) || null,
+          nextInstallmentAmount: Number(next.inst?.amount) || null,
+        };
+      }
+
+      // se não houver parcela não-paga com data válida -> significa que todas têm data inválida ou não existem não-pagas
+      return {
+        candidateDate: null,
+        daysUntilDue: Infinity,
+        overdue: false,
+        daysOverdue: 0,
+        nextInstallmentNumber: null,
+        nextInstallmentAmount: null,
+      };
+    }
+
+    // 2) Fallback para comportamento antigo (quando não há installments): usar installmentsTotal como dia do mês
     const dueRaw = order.installmentsTotal;
     if (!dueRaw && dueRaw !== 0)
       return {
@@ -160,6 +220,8 @@ const OrderList = () => {
         daysUntilDue: Infinity,
         overdue: false,
         daysOverdue: 0,
+        nextInstallmentNumber: null,
+        nextInstallmentAmount: null,
       };
 
     const dueDay = Number(dueRaw);
@@ -169,6 +231,8 @@ const OrderList = () => {
         daysUntilDue: Infinity,
         overdue: false,
         daysOverdue: 0,
+        nextInstallmentNumber: null,
+        nextInstallmentAmount: null,
       };
 
     const now = new Date();
@@ -198,7 +262,7 @@ const OrderList = () => {
         59,
       );
     } else {
-      // tenta no mês atual (com clamp). Se já passou, candidate ficará no mês atual (e será detectado como overdue)
+      // tenta no mês atual (com clamp). Se já passou, candidate ficará no mês atual (será detectado como overdue)
       candidate = new Date(
         year,
         month,
@@ -207,8 +271,6 @@ const OrderList = () => {
         59,
         59,
       );
-      // se já passou e não houve pagamento neste mês, não avançamos automaticamente para o próximo mês:
-      // isso permite detectar "atrasados". (Para pedidos não atrasados, o comparator usará daysUntilDue >= 0.)
     }
 
     const diffMs = candidate.getTime() - now.getTime();
@@ -224,6 +286,8 @@ const OrderList = () => {
       daysUntilDue: daysUntilDue >= 0 ? daysUntilDue : 0,
       overdue,
       daysOverdue,
+      nextInstallmentNumber: null,
+      nextInstallmentAmount: null,
     };
   };
 
@@ -413,7 +477,7 @@ const OrderList = () => {
         </button>
       </div>
 
-      {/* Orders list */}   
+      {/* Orders list */}
       {filteredOrders.length === 0 ? (
         <div className="rounded-lg border border-border bg-card p-12 text-center">
           <div className="mb-4 text-muted-foreground">
@@ -439,6 +503,8 @@ const OrderList = () => {
                 ? "border-destructive bg-destructive/10" // destaque para todos os atrasados (sutil)
                 : "";
 
+            const dueInfo = computeDueInfo(order);
+
             return (
               <Link to={`${order._id}/edit`} key={order._id}>
                 <div
@@ -449,7 +515,10 @@ const OrderList = () => {
                       <div className="mb-2 flex items-center gap-2">
                         <User className="h-4 w-4 text-muted-foreground" />
                         <h3 className="text-lg font-semibold text-foreground">
-                          {order.client?.name || "Cliente não encontrado"}
+                          {order.client?.name +
+                            " -- " +
+                            (order.vendedora || "Indefinido") ||
+                            "Cliente não encontrado"}
                         </h3>
                       </div>
 
@@ -468,8 +537,12 @@ const OrderList = () => {
                         </div>
                         <div>
                           <span className="font-medium">Vencimento:</span>{" "}
-                          {order.installmentsTotal
-                            ? `dia ${order.installmentsTotal}`
+                          {dueInfo?.candidateDate
+                            ? `${new Date(dueInfo.candidateDate).getDate()}${
+                                dueInfo.nextInstallmentNumber
+                                  ? ` • Parc ${dueInfo.nextInstallmentNumber}`
+                                  : ""
+                              }`
                             : "-"}
                           <div className="mt-2">
                             {order.paid === 0 ? (
@@ -504,6 +577,12 @@ const OrderList = () => {
                         <div>
                           Valor já pago:{" "}
                           {formatCurrency(order.installmentsPaid || 0)}
+                        </div>
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        <div>
+                          Parcelas restantes:{" "}
+                          {order.parcelas - order.parcelasPagas}
                         </div>
                       </div>
                     </div>

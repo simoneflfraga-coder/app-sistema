@@ -1,6 +1,6 @@
 // api.ts
 // Configuração centralizada da API
-const API_BASE_URL = "https://api-simone.vercel.app";
+const API_BASE_URL = "http://localhost:1354";
 
 interface ApiResponse<T> {
   data?: T;
@@ -411,6 +411,13 @@ export interface PaymentHistory {
   value: number;
 }
 
+export interface Installment {
+  number: number; // 1,2,3...
+  dueDate: string; // ISO string (ex: "2025-11-15T00:00:00.000Z")
+  amount: number; // em centavos (ou na unidade que o backend espera)
+  status?: "pendente" | "pago" | "atrasado";
+}
+
 export interface Order {
   _id: string;
   customerId: string;
@@ -422,6 +429,10 @@ export interface Order {
   paid?: number;
   date: string;
   paymentHistory: PaymentHistory[];
+  parcelas: number;
+  parcelasPagas: number;
+  installments: Installment[]; // <-- novo campo obrigatório no model
+  vendedora: string,
 }
 
 export interface Registration {
