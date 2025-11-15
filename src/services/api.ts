@@ -1,6 +1,6 @@
 // api.ts
 // Configuração centralizada da API
-const API_BASE_URL = "http://localhost:1354";
+const API_BASE_URL = "https://api-simone.vercel.app";
 
 interface ApiResponse<T> {
   data?: T;
@@ -459,3 +459,4 @@ export interface Financial {
 
 // exporta uma instância pronta
 export const api = new ApiService();
+
